@@ -94,16 +94,50 @@ public sealed class SecretTests : IDisposable
     }
 
     [Fact]
-    public void A_good_token_with_loose_permissions_is_kept_and_locked_down()
+    public void A_token_with_loose_permissions_is_replaced_because_someone_may_have_read_it()
     {
-        if (OperatingSystem.IsWindows()) return;
         var path = Path.Combine(_dir, "admin.token");
         var original = LocalAdminToken.LoadOrCreate(_dir);
         File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
 
         var loaded = LocalAdminToken.LoadOrCreate(_dir);
 
-        Assert.Equal(original, loaded);
+        Assert.NotEqual(original, loaded);
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+    }
+
+    [Fact]
+    public void A_symlinked_token_file_is_replaced_and_its_target_left_alone()
+    {
+        Directory.CreateDirectory(_dir);
+        var planted = Path.Combine(Path.GetTempPath(), "bifrost-planted-" + Guid.NewGuid().ToString("N"));
+        const string known = "abc1234567890123456789012345678901234567890";
+        File.WriteAllText(planted, known);
+        File.SetUnixFileMode(planted, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        var path = Path.Combine(_dir, "admin.token");
+        File.CreateSymbolicLink(path, planted);
+        try
+        {
+            var token = LocalAdminToken.LoadOrCreate(_dir);
+
+            Assert.NotEqual(known, token);
+            Assert.Null(new FileInfo(path).LinkTarget);
+            Assert.Equal(known, File.ReadAllText(planted));
+        }
+        finally
+        {
+            File.Delete(planted);
+        }
+    }
+
+    [Fact]
+    public void An_open_runtime_folder_is_made_owner_only()
+    {
+        Directory.CreateDirectory(_dir);
+        File.SetUnixFileMode(_dir, (UnixFileMode)0b111_101_101); // 0755, systemd's default for RuntimeDirectory
+
+        LocalAdminToken.LoadOrCreate(_dir);
+
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(_dir));
     }
 }

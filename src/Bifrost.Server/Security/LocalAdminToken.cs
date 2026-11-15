@@ -7,27 +7,26 @@ namespace Bifrost.Server.Security;
 public static class LocalAdminToken
 {
     private const string FileName = "admin.token";
+    private const UnixFileMode OwnerOnlyFile = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+    private const UnixFileMode OwnerOnlyFolder = OwnerOnlyFile | UnixFileMode.UserExecute;
 
     public static string LoadOrCreate(string runtimeDir)
     {
+        LockDownFolder(runtimeDir);
         var path = Path.Combine(runtimeDir, FileName);
         for (var attempt = 0; ; attempt++)
         {
-            if (File.Exists(path))
+            var info = new FileInfo(path);
+            if (info.Exists || info.LinkTarget is not null)
             {
-                var existing = File.ReadAllText(path).Trim();
-                if (IsWellFormed(existing))
+                if (IsTrustworthy(info) && File.ReadAllText(path).Trim() is var existing && IsWellFormed(existing))
                 {
-                    if (!OperatingSystem.IsWindows())
-                    {
-                        var ownerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-                        if (File.GetUnixFileMode(path) != ownerOnly) File.SetUnixFileMode(path, ownerOnly);
-                    }
                     return existing;
                 }
 
-                // Empty (a crash between create and write) or not one of ours: the caller holds the
-                // instance lock, so nobody else is using it. Replace it.
+                // Empty (a crash between create and write), not one of ours, a link, or readable by
+                // others (someone may have copied it): never reuse it. File.Delete removes a link, not
+                // its target. The caller holds the instance lock, so nobody else is using it.
                 File.Delete(path);
             }
 
@@ -44,11 +43,26 @@ public static class LocalAdminToken
         }
     }
 
+    /// <summary>A plain file, not a link, that only its owner could ever have read.</summary>
+    private static bool IsTrustworthy(FileInfo info) =>
+        info.LinkTarget is null
+        && (info.Attributes & FileAttributes.ReparsePoint) == 0
+        && (OperatingSystem.IsWindows() || info.UnixFileMode == OwnerOnlyFile);
+
+    /// <summary>A folder others can list or enter would let them swap the file; systemd creates it 0755 by default.</summary>
+    private static void LockDownFolder(string dir)
+    {
+        if (OperatingSystem.IsWindows()) return;
+        Directory.CreateDirectory(dir, OwnerOnlyFolder);
+        if (File.GetUnixFileMode(dir) != OwnerOnlyFolder) File.SetUnixFileMode(dir, OwnerOnlyFolder);
+    }
+
     private static bool IsWellFormed(string token) =>
         token.Length == 43 && token.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
 
     public static bool Matches(string expected, string? presented)
     {
+        ArgumentNullException.ThrowIfNull(expected);
         if (string.IsNullOrEmpty(presented)) return false;
         return CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(presented));
     }
