@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Bifrost.Server.Api;
+using Bifrost.Server.Extensions;
 using Bifrost.Server.People;
 using Bifrost.Server.Security;
 using Microsoft.AspNetCore.Http.Json;
@@ -22,12 +23,15 @@ public sealed partial class BifrostHost : IAsyncDisposable
     private readonly BifrostHostOptions _options;
     private readonly PeopleService _people;
     private readonly ILoggerProvider? _extraLogs;
+    private readonly ExtensionManager? _extensions;
     private readonly AuthFailureLimiter _limiter;
     private readonly TaskCompletionSource _shutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private WebApplication? _app;
 
-    private BifrostHost(BifrostHostOptions options, PeopleService people, TimeProvider time, ILoggerProvider? extraLogs)
+    private BifrostHost(BifrostHostOptions options, PeopleService people, TimeProvider time, ILoggerProvider? extraLogs,
+        ExtensionManager? extensions)
     {
+        _extensions = extensions;
         _options = options;
         _people = people;
         _extraLogs = extraLogs;
@@ -37,8 +41,10 @@ public sealed partial class BifrostHost : IAsyncDisposable
     public int Port { get; private set; }
 
     /// <param name="extraLogs">An additional log sink, used by tests to check that no secret is ever logged (D7).</param>
-    public static BifrostHost Create(BifrostHostOptions options, PeopleService people, TimeProvider time, ILoggerProvider? extraLogs = null) =>
-        new(options, people, time, extraLogs);
+    /// <param name="extensions">The extensions to report and route to; none when null.</param>
+    public static BifrostHost Create(BifrostHostOptions options, PeopleService people, TimeProvider time, ILoggerProvider? extraLogs = null,
+        ExtensionManager? extensions = null) =>
+        new(options, people, time, extraLogs, extensions);
 
     public async Task StartAsync(CancellationToken ct = default)
     {
@@ -157,6 +163,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
         MeEndpoints.Map(api);
         new PeopleEndpoints(_people).Map(api);
         new DeviceEndpoints(_people).Map(api);
+        ExtensionEndpoints.Map(api, _extensions);
         app.MapFallback("/api/{**rest}", () => Problem.Create(404, "not_found", "No such endpoint."));
         return app;
     }

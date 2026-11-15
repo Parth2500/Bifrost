@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Bifrost.Core.Models;
+using Bifrost.Server.Extensions;
 using Bifrost.Server.Hosting;
 using Bifrost.Server.People;
 using Bifrost.Server.Persistence;
@@ -21,9 +22,12 @@ public sealed class HostFixture : IAsyncDisposable
     public required Principal Admin { get; init; }
     public required FakeTimeProvider Time { get; init; }
     public required CapturingLogs Logs { get; init; }
+    public ExtensionManager? Extensions { get; init; }
+    public string? Root { get; init; }
     public int Port => Host.Port;
 
-    public static async Task<HostFixture> StartAsync(int port = 0)
+    /// <param name="extensions">Fake extensions to run: name → <c>FAKE_MODE</c>.</param>
+    public static async Task<HostFixture> StartAsync(int port = 0, IReadOnlyDictionary<string, string>? extensions = null)
     {
         var database = Bifrost.Server.Persistence.Database.OpenMemory();
         await Bifrost.Server.Persistence.Database.MigrateAsync(database);
@@ -33,13 +37,37 @@ public sealed class HostFixture : IAsyncDisposable
         var admin = await people.EnsureLocalAdminAsync("admin", token);
         var logs = new CapturingLogs();
 
-        var host = BifrostHost.Create(new BifrostHostOptions(port), people, time, logs);
+        ExtensionManager? manager = null;
+        string? root = null;
+        if (extensions is not null)
+        {
+            root = Path.Combine(Path.GetTempPath(), "bifrost-host-" + Guid.NewGuid().ToString("N")[..8]);
+            manager = new ExtensionManager(
+                extensions.Keys.ToDictionary(k => k, _ => Bifrost.Tests.Extensions.FakeExtension.Program),
+                Path.Combine(root, "run"), Path.Combine(root, "state"), time, logs,
+                extensions.ToDictionary(e => e.Key, e => (IReadOnlyDictionary<string, string>)new Dictionary<string, string> { ["FAKE_MODE"] = e.Value }));
+            await manager.StartAllAsync();
+        }
+
+        var host = BifrostHost.Create(new BifrostHostOptions(port), people, time, logs, manager);
         await host.StartAsync();
         var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{host.Port}") };
         return new HostFixture
         {
             Host = host, Http = http, Token = token, People = people, Admin = admin, Database = database, Time = time, Logs = logs,
+            Extensions = manager, Root = root,
         };
+    }
+
+    /// <summary>Waits (in real time) until every configured extension is running.</summary>
+    public async Task WaitForExtensionsAsync(int seconds = 20)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(seconds);
+        while (Extensions!.All.Any(e => e.State != ExtensionState.Running))
+        {
+            if (DateTime.UtcNow > deadline) throw new TimeoutException("extensions did not start");
+            await Task.Delay(20);
+        }
     }
 
     /// <summary>Creates a person with one device and returns who they are and their token.</summary>
@@ -74,6 +102,11 @@ public sealed class HostFixture : IAsyncDisposable
     {
         Http.Dispose();
         await Host.DisposeAsync();
+        if (Extensions is not null) await Extensions.StopAllAsync();
+        if (Root is not null)
+        {
+            try { Directory.Delete(Root, recursive: true); } catch (IOException) { }
+        }
         People.Dispose();
         Database.Dispose();
     }
