@@ -5,7 +5,9 @@
 Bifröst is **the home**: the one service on a home machine that the family's devices pair with,
 that extensions plug into, and that links the home to the online group (Heimdall and Huginn).
 
-> **Status: design only.** There is no code yet. Read [`docs/design.md`](docs/design.md).
+> **Status: step 1 of 7.** `bifrost daemon` keeps people, devices and their tokens, and serves them
+> on a loopback API. Pairing, extensions and the LAN come in later steps. Read
+> [`docs/design.md`](docs/design.md), and [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) to run it.
 
 ## What it does
 
