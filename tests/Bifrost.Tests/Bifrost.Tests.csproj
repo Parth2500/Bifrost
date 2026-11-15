@@ -22,6 +22,8 @@
     <ProjectReference Include="../../src/Bifrost.Core/Bifrost.Core.csproj" />
     <ProjectReference Include="../../src/Bifrost.Server/Bifrost.Server.csproj" />
     <ProjectReference Include="../../src/Bifrost.App/Bifrost.App.csproj" />
+    <!-- Built beside the tests, not referenced: the tests start it as a child process. -->
+    <ProjectReference Include="../Bifrost.FakeExtension/Bifrost.FakeExtension.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

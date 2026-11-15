@@ -6,5 +6,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Bifrost.Tests/Bifrost.Tests.csproj" />
+    <Project Path="tests/Bifrost.FakeExtension/Bifrost.FakeExtension.csproj" />
   </Folder>
 </Solution>
