@@ -136,6 +136,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
         builder.Services.AddRoutingCore();
         builder.Services.Configure<RouteHandlerOptions>(o => o.ThrowOnBadRequest = true); // so bad bodies become problem+json
         builder.Services.AddOpenApi();
+        builder.Services.AddHttpForwarder();
         builder.WebHost.UseKestrelCore();
         builder.WebHost.ConfigureKestrel(kestrel =>
         {
@@ -164,6 +165,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
         new PeopleEndpoints(_people).Map(api);
         new DeviceEndpoints(_people).Map(api);
         ExtensionEndpoints.Map(api, _extensions);
+        new ExtensionProxy(_extensions, app.Services.GetRequiredService<Yarp.ReverseProxy.Forwarder.IHttpForwarder>()).Map(app);
         app.MapFallback("/api/{**rest}", () => Problem.Create(404, "not_found", "No such endpoint."));
         return app;
     }
@@ -204,7 +206,8 @@ public sealed partial class BifrostHost : IAsyncDisposable
     private async Task Authenticate(HttpContext context, Func<Task> next)
     {
         var isPublic = HttpMethods.IsGet(context.Request.Method) && context.Request.Path == "/api/v1/server";
-        if (isPublic || !context.Request.Path.StartsWithSegments("/api"))
+        var guarded = context.Request.Path.StartsWithSegments("/api") || context.Request.Path.StartsWithSegments(ExtensionProxy.Prefix);
+        if (isPublic || !guarded)
         {
             await next();
             return;

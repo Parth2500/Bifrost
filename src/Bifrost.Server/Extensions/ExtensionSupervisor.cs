@@ -193,10 +193,11 @@ public sealed partial class ExtensionSupervisor : IAsyncDisposable
                 LogGaveUp(_log, Name, code);
                 return;
             }
-            State = ExtensionState.Crashed;
-            LogExited(_log, Name, code, wait.TotalSeconds);
+            // The restart is scheduled before the state says so: whoever sees "crashed" can rely on it.
             _restart?.Dispose();
             _restart = _time.CreateTimer(_ => Launch(), null, wait, Timeout.InfiniteTimeSpan);
+            State = ExtensionState.Crashed;
+            LogExited(_log, Name, code, wait.TotalSeconds);
         }
         process.Dispose();
     }

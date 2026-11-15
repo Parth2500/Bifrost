@@ -52,7 +52,7 @@ app.MapGet("/slow", async (HttpContext context) =>
     }
 });
 
-app.MapFallback(async (HttpContext context) =>
+app.Map("/{**path}", async (HttpContext context) => // not MapFallback: that skips paths that look like file names
 {
     using var body = new MemoryStream();
     await context.Request.Body.CopyToAsync(body);
