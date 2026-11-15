@@ -54,6 +54,8 @@ internal sealed class PeopleEndpoints(PeopleService people)
                 "invalid_name" => Problem.Create(400, e.Code, "The name must be 1–40 characters without slashes or control characters."),
                 "name_taken" => Problem.Create(409, e.Code, "Another person already has that name."),
                 "last_admin" => Problem.Create(409, e.Code, "There must always be at least one admin."),
+                "local_admin" => Problem.Create(409, e.Code, "The admin who owns this computer's device can't be demoted or deleted."),
+                "local_device" => Problem.Create(409, e.Code, "This computer's device can't be revoked."),
                 "person_not_found" => Problem.Create(404, e.Code, "No such person."),
                 _ => Problem.Create(400, e.Code, "The request was refused."),
             };

@@ -26,7 +26,7 @@ internal sealed class DeviceEndpoints(PeopleService people)
         return Results.Ok((await people.ListDevicesAsync(me.IsAdmin ? person : me.PersonId)).Select(ToDto));
     }
 
-    private async Task<IResult> Revoke(HttpContext context, Guid id)
+    private Task<IResult> Revoke(HttpContext context, Guid id) => PeopleEndpoints.Guarded(async () =>
     {
         var me = context.Principal();
         var device = await people.GetDeviceAsync(id);
@@ -34,11 +34,7 @@ internal sealed class DeviceEndpoints(PeopleService people)
         {
             return Problem.Create(404, "device_not_found", "No such device."); // another's device looks like a missing one
         }
-        if (device.IsLocal)
-        {
-            return Problem.Create(409, "local_device", "This computer's device can't be revoked.");
-        }
-        await people.RevokeDeviceAsync(me, id);
+        await people.RevokeDeviceAsync(me, id); // refuses the local device
         return Results.NoContent();
-    }
+    });
 }

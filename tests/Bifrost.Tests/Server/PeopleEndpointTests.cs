@@ -140,4 +140,35 @@ public class PeopleEndpointTests
         Assert.Equal("person.created", row.Kind);
         Assert.Equal(home.Admin.DeviceId, row.ActorDeviceId);
     }
+
+    [Fact]
+    public async Task With_a_second_admin_the_host_admin_still_cannot_remove_itself()
+    {
+        await using var home = await StartAsync();
+        await home.AddPersonAsync("bob", PersonRole.Admin);
+
+        var delete = await home.SendAsync(HttpMethod.Delete, $"/api/v1/people/{home.Admin.PersonId}?confirm=true");
+        var demote = await home.SendAsync(HttpMethod.Patch, $"/api/v1/people/{home.Admin.PersonId}", Body(new { role = "member" }));
+
+        Assert.Equal(HttpStatusCode.Conflict, delete.StatusCode);
+        Assert.Equal("local_admin", await Code(delete));
+        Assert.Equal(HttpStatusCode.Conflict, demote.StatusCode);
+        Assert.Equal("local_admin", await Code(demote));
+        Assert.Equal(HttpStatusCode.OK, (await home.SendAsync(HttpMethod.Get, "/api/v1/people")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Times_are_sent_as_UTC_on_every_route()
+    {
+        await using var home = await StartAsync();
+        var (_, token) = await home.AddPersonAsync("bob");
+        await home.SendAsync(HttpMethod.Get, "/api/v1/me", token: token); // sets last seen
+
+        var people = await Json(await home.SendAsync(HttpMethod.Get, "/api/v1/people"));
+        var devices = await Json(await home.SendAsync(HttpMethod.Get, "/api/v1/devices"));
+
+        Assert.All(people.EnumerateArray(), p => Assert.EndsWith("Z", p.GetProperty("createdAt").GetString(), StringComparison.Ordinal));
+        Assert.All(devices.EnumerateArray(), d => Assert.EndsWith("Z", d.GetProperty("createdAt").GetString(), StringComparison.Ordinal));
+        Assert.Contains(devices.EnumerateArray(), d => d.GetProperty("lastSeenAt").GetString()?.EndsWith('Z') == true);
+    }
 }

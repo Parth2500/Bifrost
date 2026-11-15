@@ -6,6 +6,10 @@ public class PersonEntity
 {
     public Guid Id { get; set; }
     public string DisplayName { get; set; } = "";
+
+    /// <summary><see cref="People.PersonNames.Key"/> of the name. Unique, so look-alike names collide.</summary>
+    public string NameKey { get; set; } = "";
+
     public PersonRole Role { get; set; }
     public DateTime CreatedAt { get; set; }
 }

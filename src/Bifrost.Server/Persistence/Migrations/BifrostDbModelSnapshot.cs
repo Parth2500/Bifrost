@@ -133,8 +133,12 @@ namespace Bifrost.Server.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("TEXT")
-                        .HasColumnName("display_name")
-                        .UseCollation("NOCASE");
+                        .HasColumnName("display_name");
+
+                    b.Property<string>("NameKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("name_key");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -144,9 +148,9 @@ namespace Bifrost.Server.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_people");
 
-                    b.HasIndex("DisplayName")
+                    b.HasIndex("NameKey")
                         .IsUnique()
-                        .HasDatabaseName("ix_people_display_name");
+                        .HasDatabaseName("ix_people_name_key");
 
                     b.ToTable("people", (string)null);
                 });

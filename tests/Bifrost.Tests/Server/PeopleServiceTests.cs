@@ -166,6 +166,28 @@ public sealed class PeopleServiceTests : IDisposable
         Assert.Equal(2, (await _people.ListPeopleAsync()).Count);
     }
 
+    [Theory]
+    [InlineData("Émile", "émile")]
+    [InlineData("émile", "e\u0301mile")]
+    [InlineData("ÄNNE", "änne")]
+    [InlineData("ﬁona", "fiona")]
+    public async Task Names_that_differ_by_unicode_case_or_form_are_taken(string first, string second)
+    {
+        var admin = await AdminAsync();
+        await _people.CreatePersonAsync(admin, first, PersonRole.Member);
+
+        Assert.Equal("name_taken", await CodeOf(_people.CreatePersonAsync(admin, second, PersonRole.Member)));
+    }
+
+    [Theory]
+    [InlineData("Bob\u200B")]
+    [InlineData("\u202Eevil")]
+    [InlineData("a\uFEFFb")]
+    public async Task Names_with_invisible_format_characters_are_rejected(string name)
+    {
+        Assert.Equal("invalid_name", await CodeOf(_people.CreatePersonAsync(await AdminAsync(), name, PersonRole.Member)));
+    }
+
     [Fact]
     public async Task Renaming_onto_another_persons_name_is_taken()
     {
@@ -199,37 +221,85 @@ public sealed class PeopleServiceTests : IDisposable
     public async Task With_two_admins_one_can_be_demoted()
     {
         var admin = await AdminAsync();
-        await _people.CreatePersonAsync(admin, "bob", PersonRole.Admin);
+        var bob = await _people.CreatePersonAsync(admin, "bob", PersonRole.Admin);
 
-        var updated = await _people.UpdatePersonAsync(admin, admin.PersonId, null, PersonRole.Member);
+        var updated = await _people.UpdatePersonAsync(admin, bob.Id, null, PersonRole.Member);
 
         Assert.Equal(PersonRole.Member, updated.Role);
     }
 
-    [Fact]
-    public async Task Two_concurrent_demotions_of_the_two_admins_leave_one_admin()
+    public enum Change { Demote, Delete }
+
+    /// <summary>
+    /// Two admins and no local device, so only the last-admin rule stands between them. Each round starts
+    /// both changes on pool threads behind a barrier, so they really overlap; without the gate this fails.
+    /// </summary>
+    [Theory]
+    [InlineData(Change.Demote, Change.Demote)]
+    [InlineData(Change.Delete, Change.Delete)]
+    [InlineData(Change.Delete, Change.Demote)]
+    public async Task Two_concurrent_changes_to_the_two_admins_leave_one_admin(Change first, Change second)
     {
-        for (var round = 0; round < 20; round++)
+        var someone = new Principal(Guid.NewGuid(), "someone", PersonRole.Admin, Guid.NewGuid(), "test", DeviceKind.App, false);
+        for (var round = 0; round < 50; round++)
         {
             using var factory = Database.OpenMemory();
             await Database.MigrateAsync(factory);
-            var people = new PeopleService(factory, TimeProvider.System);
-            var alice = await people.EnsureLocalAdminAsync("alice", "t");
-            var bob = await people.CreatePersonAsync(alice, "bob", PersonRole.Admin);
+            using var people = new PeopleService(factory, TimeProvider.System);
+            var a = await people.CreatePersonAsync(someone, "a", PersonRole.Admin);
+            var b = await people.CreatePersonAsync(someone, "b", PersonRole.Admin);
+            using var barrier = new Barrier(2);
 
             var results = await Task.WhenAll(
-                Attempt(people.UpdatePersonAsync(alice, alice.PersonId, null, PersonRole.Member)),
-                Attempt(people.UpdatePersonAsync(alice, bob.Id, null, PersonRole.Member)));
+                Task.Run(() => Attempt(barrier, () => Apply(people, someone, a.Id, first))),
+                Task.Run(() => Attempt(barrier, () => Apply(people, someone, b.Id, second))));
 
             Assert.Equal(1, results.Count(ok => ok));
             Assert.Equal(1, (await people.ListPeopleAsync()).Count(p => p.Role == PersonRole.Admin));
         }
 
-        static async Task<bool> Attempt(Task<PersonEntity> task)
+        static async Task<bool> Attempt(Barrier barrier, Func<Task> change)
         {
-            try { await task; return true; }
+            barrier.SignalAndWait();
+            try { await change(); return true; }
             catch (PeopleException e) when (e.Code == "last_admin") { return false; }
         }
+    }
+
+    private static Task Apply(PeopleService people, Principal actor, Guid id, Change change) => change == Change.Demote
+        ? people.UpdatePersonAsync(actor, id, null, PersonRole.Member)
+        : people.DeletePersonAsync(actor, id);
+
+    [Fact]
+    public async Task The_host_admin_cannot_be_demoted_or_deleted_even_with_another_admin()
+    {
+        var admin = await AdminAsync();
+        await _people.CreatePersonAsync(admin, "bob", PersonRole.Admin);
+        var before = (await AuditAsync()).Count;
+
+        Assert.Equal("local_admin", await CodeOf(_people.UpdatePersonAsync(admin, admin.PersonId, null, PersonRole.Member)));
+        Assert.Equal("local_admin", await CodeOf(_people.DeletePersonAsync(admin, admin.PersonId)));
+
+        Assert.Equal(PersonRole.Admin, (await _people.GetPersonAsync(admin.PersonId))!.Role);
+        Assert.NotNull(await _people.AuthenticateAsync("local-token"));
+        Assert.Equal(before, (await AuditAsync()).Count);
+    }
+
+    [Fact]
+    public async Task The_host_admin_can_still_be_renamed()
+    {
+        var admin = await AdminAsync();
+
+        Assert.Equal("Alicia", (await _people.UpdatePersonAsync(admin, admin.PersonId, "Alicia", null)).DisplayName);
+    }
+
+    [Fact]
+    public async Task The_local_device_cannot_be_revoked()
+    {
+        var admin = await AdminAsync();
+
+        Assert.Equal("local_device", await CodeOf(_people.RevokeDeviceAsync(admin, admin.DeviceId)));
+        Assert.NotNull(await _people.AuthenticateAsync("local-token"));
     }
 
     [Fact]
@@ -298,5 +368,22 @@ public sealed class PeopleServiceTests : IDisposable
         await _people.RevokeDeviceAsync(admin, phone.Device.Id);
 
         Assert.Single(await AuditAsync(), r => r.Kind == "device.revoked");
+    }
+
+    [Fact]
+    public async Task Times_read_back_from_the_store_are_UTC()
+    {
+        var admin = await AdminAsync();
+        var bob = await _people.CreatePersonAsync(admin, "bob", PersonRole.Member);
+        var phone = await _people.IssueDeviceAsync(bob.Id, "phone", "android", DeviceKind.App);
+        await _people.AuthenticateAsync(phone.Token);
+
+        var person = (await _people.GetPersonAsync(bob.Id))!;
+        var device = (await _people.GetDeviceAsync(phone.Device.Id))!;
+
+        Assert.Equal(DateTimeKind.Utc, person.CreatedAt.Kind);
+        Assert.Equal(DateTimeKind.Utc, device.CreatedAt.Kind);
+        Assert.Equal(DateTimeKind.Utc, device.LastSeenAt!.Value.Kind);
+        Assert.Equal(_time.GetUtcNow().UtcDateTime, device.LastSeenAt);
     }
 }

@@ -34,7 +34,8 @@ namespace Bifrost.Server.Persistence.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    display_name = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false, collation: "NOCASE"),
+                    display_name = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
+                    name_key = table.Column<string>(type: "TEXT", nullable: false),
                     role = table.Column<string>(type: "TEXT", nullable: false),
                     created_at = table.Column<DateTime>(type: "TEXT", nullable: false)
                 },
@@ -86,9 +87,9 @@ namespace Bifrost.Server.Persistence.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "ix_people_display_name",
+                name: "ix_people_name_key",
                 table: "people",
-                column: "display_name",
+                column: "name_key",
                 unique: true);
         }
 

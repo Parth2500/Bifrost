@@ -1,4 +1,5 @@
 using Bifrost.Core.Models;
+using Bifrost.Server.People;
 using Bifrost.Server.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,7 +15,7 @@ public sealed class DatabaseTests : IDisposable
     }
 
     private static PersonEntity Person(string name, PersonRole role = PersonRole.Member) =>
-        new() { Id = Guid.NewGuid(), DisplayName = name, Role = role, CreatedAt = DateTime.UtcNow };
+        new() { Id = Guid.NewGuid(), DisplayName = name, NameKey = PersonNames.Key(name), Role = role, CreatedAt = DateTime.UtcNow };
 
     private static DeviceEntity Device(Guid personId, string hash = "hash", DeviceKind kind = DeviceKind.App) =>
         new() { Id = Guid.NewGuid(), PersonId = personId, Name = "phone", Platform = "android", Kind = kind, TokenHash = hash, CreatedAt = DateTime.UtcNow };
@@ -60,7 +61,7 @@ public sealed class DatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task Names_are_unique_ignoring_case()
+    public async Task Name_keys_are_unique()
     {
         using var factory = await MemoryAsync();
         await using var db = await factory.CreateDbContextAsync();

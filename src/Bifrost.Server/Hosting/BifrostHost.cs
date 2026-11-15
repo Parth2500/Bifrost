@@ -150,7 +150,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
         app.Use(Authenticate);
 
         app.MapOpenApi();
-        app.MapScalarApiReference();
+        app.MapScalarApiReference(scalar => scalar.DisableDefaultFonts()); // the default fonts come from Scalar's CDN
 
         var api = app.MapGroup("/api/v1");
         ServerEndpoints.Map(api, () => _shutdown.TrySetResult());

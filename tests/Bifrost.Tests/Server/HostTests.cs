@@ -267,4 +267,15 @@ public class HostTests
 
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(6), $"stopping took {clock.Elapsed}");
     }
+
+    [Fact]
+    public async Task The_API_docs_page_loads_nothing_from_outside_the_home()
+    {
+        await using var home = await StartAsync();
+
+        var page = await home.Http.GetStringAsync("/scalar/");
+
+        Assert.Contains("\"withDefaultFonts\":false", page, StringComparison.Ordinal); // else fonts come from fonts.scalar.com
+        Assert.DoesNotContain("https://", page, StringComparison.Ordinal);
+    }
 }

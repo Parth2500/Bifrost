@@ -28,8 +28,8 @@ public sealed class PeopleService(IDbContextFactory<BifrostDb> dbFactory, TimePr
             string name;
             try { name = PersonNames.Validate(adminName); }
             catch (PeopleException) { name = "admin"; }
-            if (await db.People.AnyAsync(p => p.DisplayName == name)) name = "admin";
-            admin = new PersonEntity { Id = Guid.NewGuid(), DisplayName = name, Role = PersonRole.Admin, CreatedAt = Now };
+            if (await NameTaken(db, name, null)) name = "admin";
+            admin = new PersonEntity { Id = Guid.NewGuid(), DisplayName = name, NameKey = PersonNames.Key(name), Role = PersonRole.Admin, CreatedAt = Now };
             db.People.Add(admin);
             Audit(db, null, "person.created", admin.Id, null);
         }
@@ -91,6 +91,7 @@ public sealed class PeopleService(IDbContextFactory<BifrostDb> dbFactory, TimePr
     {
         var device = await db.Devices.FirstOrDefaultAsync(d => d.Id == deviceId);
         if (device is null) return false;
+        if (device.IsLocal) throw new PeopleException("local_device"); // the host's own way in
         if (device.RevokedAt is null)
         {
             device.RevokedAt = Now;
@@ -103,8 +104,8 @@ public sealed class PeopleService(IDbContextFactory<BifrostDb> dbFactory, TimePr
     public Task<PersonEntity> CreatePersonAsync(Principal actor, string displayName, PersonRole role) => With(async db =>
     {
         var name = PersonNames.Validate(displayName);
-        if (await db.People.AnyAsync(p => p.DisplayName == name)) throw new PeopleException("name_taken");
-        var person = new PersonEntity { Id = Guid.NewGuid(), DisplayName = name, Role = role, CreatedAt = Now };
+        if (await NameTaken(db, name, null)) throw new PeopleException("name_taken");
+        var person = new PersonEntity { Id = Guid.NewGuid(), DisplayName = name, NameKey = PersonNames.Key(name), Role = role, CreatedAt = Now };
         db.People.Add(person);
         Audit(db, actor, "person.created", person.Id, StoredWords.Role(role));
         await db.SaveChangesAsync();
@@ -117,16 +118,18 @@ public sealed class PeopleService(IDbContextFactory<BifrostDb> dbFactory, TimePr
         if (displayName is not null)
         {
             var name = PersonNames.Validate(displayName);
-            if (await db.People.AnyAsync(p => p.Id != id && p.DisplayName == name)) throw new PeopleException("name_taken");
+            if (await NameTaken(db, name, id)) throw new PeopleException("name_taken");
             if (name != person.DisplayName)
             {
                 Audit(db, actor, "person.renamed", id, $"{person.DisplayName}->{name}");
                 person.DisplayName = name;
+                person.NameKey = PersonNames.Key(name);
             }
         }
         if (role is { } newRole && newRole != person.Role)
         {
             if (person.Role == PersonRole.Admin && await AdminCount(db) <= 1) throw new PeopleException("last_admin");
+            if (await OwnsLocalDevice(db, id)) throw new PeopleException("local_admin");
             Audit(db, actor, "person.role_changed", id, $"{StoredWords.Role(person.Role)}->{StoredWords.Role(newRole)}");
             person.Role = newRole;
         }
@@ -138,6 +141,7 @@ public sealed class PeopleService(IDbContextFactory<BifrostDb> dbFactory, TimePr
     {
         var person = await db.People.FirstOrDefaultAsync(p => p.Id == id) ?? throw new PeopleException("person_not_found");
         if (person.Role == PersonRole.Admin && await AdminCount(db) <= 1) throw new PeopleException("last_admin");
+        if (await OwnsLocalDevice(db, id)) throw new PeopleException("local_admin");
         db.People.Remove(person); // devices cascade
         Audit(db, actor, "person.deleted", id, person.DisplayName);
         await db.SaveChangesAsync();
@@ -166,6 +170,19 @@ public sealed class PeopleService(IDbContextFactory<BifrostDb> dbFactory, TimePr
         {
             At = Now, Kind = kind, ActorPersonId = actor?.PersonId, ActorDeviceId = actor?.DeviceId, SubjectId = subject, Detail = detail,
         });
+
+    private static Task<bool> NameTaken(BifrostDb db, string name, Guid? except)
+    {
+        var key = PersonNames.Key(name);
+        return db.People.AnyAsync(p => p.NameKey == key && p.Id != except);
+    }
+
+    /// <summary>
+    /// The host admin owns the "This computer" device. Demoting or deleting them would leave the host with
+    /// no admin token until a restart, and nothing in step 1 can issue another.
+    /// </summary>
+    private static Task<bool> OwnsLocalDevice(BifrostDb db, Guid personId) =>
+        db.Devices.AnyAsync(d => d.IsLocal && d.PersonId == personId);
 
     private static Task<int> AdminCount(BifrostDb db) => db.People.CountAsync(p => p.Role == PersonRole.Admin);
 

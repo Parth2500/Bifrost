@@ -9,6 +9,14 @@ public class BifrostDb(DbContextOptions<BifrostDb> options) : DbContext(options)
     public DbSet<DeviceEntity> Devices => Set<DeviceEntity>();
     public DbSet<AuditEntity> Audit => Set<AuditEntity>();
 
+    /// <summary>SQLite keeps no time zone, so every time read back is marked UTC (all are written as UTC).</summary>
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        ArgumentNullException.ThrowIfNull(configurationBuilder);
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcConverter>();
+        configurationBuilder.Properties<DateTime?>().HaveConversion<UtcConverter>();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
@@ -17,8 +25,9 @@ public class BifrostDb(DbContextOptions<BifrostDb> options) : DbContext(options)
         {
             person.ToTable("people");
             person.HasKey(p => p.Id);
-            person.Property(p => p.DisplayName).UseCollation("NOCASE").HasMaxLength(40).IsRequired();
-            person.HasIndex(p => p.DisplayName).IsUnique();
+            person.Property(p => p.DisplayName).HasMaxLength(40).IsRequired();
+            person.Property(p => p.NameKey).IsRequired();
+            person.HasIndex(p => p.NameKey).IsUnique();
             person.Property(p => p.Role).HasConversion(role => StoredWords.Role(role), text => StoredWords.Role(text));
         });
 
@@ -42,6 +51,9 @@ public class BifrostDb(DbContextOptions<BifrostDb> options) : DbContext(options)
         });
     }
 }
+
+internal sealed class UtcConverter() : Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime, DateTime>(
+    v => v.ToUniversalTime(), v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
 
 /// <summary>The design's words for roles and device kinds, as stored (and as sent over the API).</summary>
 public static class StoredWords
