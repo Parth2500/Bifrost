@@ -1,8 +1,11 @@
 using Bifrost.App;
+using Bifrost.App.Service;
 
 return args switch
 {
     ["daemon"] => await DaemonCommand.RunAsync(),
+    ["service", .. var rest] => await new ServiceCommand(new ProcessCommandRunner(), Environment.ProcessPath ?? "",
+        Environment.GetEnvironmentVariable, Environment.IsPrivilegedProcess, Console.Out, new RealFileSystem()).RunAsync(rest),
     _ => Usage(),
 };
 
@@ -12,7 +15,10 @@ static int Usage()
         Usage: bifrost <command>
 
         Commands:
-          daemon    Run the home: people, devices and the loopback API.
+          daemon                              Run the home: people, devices, extensions and the API.
+          service install [--admin <account>] Install and start the system service (needs sudo).
+          service uninstall [--purge]         Remove the service; --purge also removes its data.
+          service status                      Show the service's state.
         """);
     return 64; // EX_USAGE
 }
