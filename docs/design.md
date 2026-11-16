@@ -497,8 +497,8 @@ Each step ends with working, tested software.
    new Bifröst project. Sleipnir alone keeps working throughout.
 2. **Host an extension.** Bifröst runs as a system service, starts Sleipnir on a private socket and
    routes to it with identity headers. The loopback listener only. The desk companion and "ask the
-   admin" on the host screen come here. **Built** (2026-11-16); the install on a real machine and a
-   click on a real notification are still to be checked by hand.
+   admin" on the host screen come here. **Built** (2026-11-16), and installed on a real machine. An
+   extension under the service and a click on a real notification are still to be checked by hand.
 3. **LAN.** Home key, HTTPS listener, pinning, pairing paths A and B, mDNS.
 4. **Client app, first cut.** Pair, pin, show Sleipnir's screens. Run the web view pinning test here.
 5. **Install and update.** Signed releases, rollback, install from file.

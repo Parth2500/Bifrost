@@ -1,7 +1,7 @@
 # ADR 002: A system service, and an admin socket in place of the token file
 
 - Date: 2026-11-16
-- Status: Accepted. The real install (plan 2c, Task 3) has not been run yet; its findings go here.
+- Status: Accepted. Installed for real on 2026-11-16 (Fedora 44, systemd 259, SELinux enforcing).
 - Affects: design §3, §5, §11; steps 2b and 2c
 
 ## Context
@@ -49,5 +49,19 @@ root to edit. The prompt comes with the first such action.
 - The installer copies the program and the `*.so` files beside it (SQLite's native library is not
   inside a single-file publish). Publishing in another shape needs the installer to change.
 - After installing a newer version the service must be restarted by hand; the installer says so.
-- Not yet checked on a real machine: SELinux on Fedora may refuse to start a program from `/opt`
-  until it is labelled. Task 3 checks `journalctl -u bifrost` and records the fix here.
+
+## The real install (2026-11-16)
+
+Fedora 44, systemd 259, SELinux enforcing. `sudo bifrost service install` from a single-file
+publish, then checked without root:
+
+- The service is active as `bifrost`, started from `/opt/bifrost/bifrost`.
+- **SELinux needed nothing.** The program in `/opt` is labelled `usr_t` and systemd starts it; the
+  journal shows no denial.
+- `/run/bifrost` is `0700 bifrost`, `/run/bifrost-admin` is `0755` with `admin.sock` `0666`,
+  `/var/lib/bifrost` is `0700`, and `/etc/bifrost/admin.json` is `0600 bifrost`.
+- The admin socket answers `/api/v1/me` as the account that ran `sudo`, as "This computer".
+- The loopback port answers `401` without a token.
+
+Not checked yet: an extension under the service (Sleipnir in `/opt/sleipnir`, named in
+`/etc/bifrost/extensions.json`), and a program under `/home` being refused with a clear log line.
