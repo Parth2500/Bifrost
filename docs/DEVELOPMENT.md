@@ -20,12 +20,32 @@ systemd sets them for the service, so they never touch your own folders.
 
 ```sh
 dotnet run --project src/Bifrost.App -- daemon
-curl -H "Authorization: Bearer $(cat ~/.local/state/bifrost/admin.token)" http://127.0.0.1:7780/api/v1/me
+curl --unix-socket "$XDG_RUNTIME_DIR/bifrost-admin/admin.sock" http://localhost/api/v1/me
 ```
 
+The second line is the host admin's way in: the admin socket. It needs no token, because the
+operating system tells Bifröst which account is calling, and run by hand the admin is you. The
+loopback port (7780) needs a device token, and devices come with pairing (step 3).
+
 Without systemd's variables the daemon uses `~/.config/bifrost`, `~/.local/share/bifrost` and
-`$XDG_RUNTIME_DIR/bifrost` (or `~/.local/state/bifrost`). The API is described at
-`http://127.0.0.1:7780/scalar`.
+`$XDG_RUNTIME_DIR/bifrost` (or `~/.local/state/bifrost`), with the admin socket in `bifrost-admin`
+beside the runtime folder. The API is described at `http://127.0.0.1:7780/scalar`.
+
+## Install it as the system service
+
+```sh
+dotnet publish src/Bifrost.App -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o out
+sudo out/bifrost service install        # the admin is whoever ran sudo; or: --admin <account>
+curl --unix-socket /run/bifrost-admin/admin.sock http://localhost/api/v1/me
+bifrost service status
+sudo /opt/bifrost/bifrost service uninstall            # keeps the data
+sudo /opt/bifrost/bifrost service uninstall --purge    # removes data, settings and the account
+```
+
+The installer prints each command before running it. It creates the `bifrost` account, copies the
+program to `/opt/bifrost`, writes `/etc/bifrost/admin.json` and the unit, and starts it. After
+installing a newer version, run `sudo systemctl restart bifrost`. The reasons are in
+[ADR 002](decisions/002-system-service-and-admin-socket.md).
 
 ## Extensions
 
@@ -59,6 +79,6 @@ dotnet ef migrations add <Name> -p src/Bifrost.Server -o Persistence/Migrations
 |---|---|
 | `Bifrost.Core` | API types and enums. Framework references only, so the client app can share it |
 | `Bifrost.Server` | People, the store, security, the host, and the extension supervisor and proxy |
-| `Bifrost.App` | The `bifrost` command |
+| `Bifrost.App` | The `bifrost` command: `daemon` and `service` |
 | `Bifrost.Tests` | xUnit, `FakeTimeProvider`, CsCheck |
 | `Bifrost.FakeExtension` | The extension the tests run |

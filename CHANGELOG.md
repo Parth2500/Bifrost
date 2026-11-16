@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Changed: the host admin is the OS account, not a token file (step 2c)
+
+- **Breaking: `admin.token` is gone.** The host admin reaches Bifröst on the admin socket,
+  `admin.sock` in the `bifrost-admin` runtime folder, with no token:
+  `curl --unix-socket /run/bifrost-admin/admin.sock http://localhost/api/v1/me`. The operating
+  system says which account is calling. Any other account gets `403 not_the_admin`. A token file
+  left by an older version is deleted at start.
+- **`bifrost service install | uninstall | status`** runs Bifröst as a sandboxed systemd service
+  under its own `bifrost` account. Install needs `sudo`, records who ran it as the admin (or
+  `--admin <account>`, never root) in `/etc/bifrost/admin.json`, and prints each command first.
+  Uninstall keeps the data unless `--purge`.
+- The runtime folder is set to `0700` at every start. The loopback port still needs a device token.
+
 ### Added: extensions (step 2b)
 
 - **Extensions run under the daemon.** Each one named in `extensions.json` (in the settings folder)
@@ -24,8 +37,7 @@
   `::1`, port 7780 or the next free one, recorded in `daemon.json`. It stops cleanly on SIGTERM,
   SIGINT, SIGHUP or `POST /api/v1/server/shutdown` (admin only).
 - **People and devices** live in a private SQLite file, `bifrost.db`. The first start creates an
-  admin, named after the operating-system account, and the "This computer" device, whose token is
-  `admin.token`. Each device has its own token. Only its hash is stored. Revoking works on the next
+  admin, named after the operating-system account, and the "This computer" device. Each device has its own token. Only its hash is stored. Revoking works on the next
   request.
 - **Roles:** `admin` and `member`. Admins manage people (`/people`). Everyone sees and revokes their
   own devices (`/devices`) and sees who they are (`/me`). The last admin cannot be demoted or deleted.

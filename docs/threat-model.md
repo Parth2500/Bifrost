@@ -1,8 +1,9 @@
-# Bifröst threat model (steps 1 and 2b)
+# Bifröst threat model (steps 1, 2b and 2c)
 
-Scope: what step 1 builds (design §12): the `bifrost daemon` process, its SQLite store, the local
-admin token, and the loopback HTTP API for people and devices; and what step 2b builds: extensions
-as child processes, the `/x/<name>/…` route and the extension API socket. The rows of design §11 that later
+Scope: what step 1 builds (design §12): the `bifrost daemon` process, its SQLite store, and the
+loopback HTTP API for people and devices; and what step 2b builds: extensions
+as child processes, the `/x/<name>/…` route and the extension API socket; and what step 2c builds:
+the system service and the admin socket. The rows of design §11 that later
 steps build are listed at the end, with the step that owns each.
 
 Each decision names the test that proves it. A decision without a test is a defect.
@@ -15,8 +16,9 @@ Each decision names the test that proves it. A decision without a test is a defe
 | Person | Someone in the home. A person has a role and has no password. |
 | Device | Something a person uses. A device has one token. |
 | Device token | A random 256-bit secret, base64url, 43 characters. Bifröst stores only its SHA-256. |
-| Local admin token | The token of the built-in "This computer" device, kept in `admin.token` in the runtime folder. It stands in for the host admin until step 2. |
-| Runtime folder | `RUNTIME_DIRECTORY` under systemd, else `$XDG_RUNTIME_DIR/bifrost`. |
+| Admin account | The operating-system account recorded in `admin.json` by `bifrost service install`. Without the file, the account the daemon runs as. |
+| Admin socket | `admin.sock` in the admin runtime folder (`/run/bifrost-admin`). Any account can connect; only the admin account is answered, as the "This computer" device. |
+| Runtime folder | `RUNTIME_DIRECTORY` (its first entry) under systemd, else `$XDG_RUNTIME_DIR/bifrost`. `0700`. |
 | Data folder | `STATE_DIRECTORY` under systemd, else `$XDG_DATA_HOME/bifrost`. Holds `bifrost.db` and the instance lock. |
 | Extension | A separate program Bifröst starts as a child process under its own account: `sleipnir`, `saga`, `files` or `norns`. |
 | Extension socket | `x/<name>/extension.sock` in the runtime folder. The extension listens; only Bifröst calls it. |
@@ -30,6 +32,7 @@ Each decision names the test that proves it. A decision without a test is a defe
 |---|---|---|---|
 | B1 | Loopback HTTP | Any process on the host, and any web page the host's browser opens | Untrusted until it shows a device token |
 | B2 | Runtime and data folders | Other operating-system accounts on the host | Untrusted |
+| B4 | Admin socket | Every operating-system account on the host | Untrusted until the kernel says it is the admin account |
 | B3 | Extension sockets | An extension, running under Bifröst's own account | Trusted to be one of the built-in extensions; not trusted to stay up, or to be the one it claims to be |
 
 ## Decisions
@@ -42,11 +45,11 @@ Each decision names the test that proves it. A decision without a test is a defe
 | B4 | Guessing tokens | 20 wrong tokens per source per minute, then 429. A request with no token does not count. A right token always works | `HostTests.Wrong_tokens_are_throttled_but_the_right_one_still_works`, `Requests_without_credentials_do_not_use_up_the_failure_budget` |
 | B5 | A lost or stolen device | Revocation takes effect on the next request. Deleting a person deletes their devices. Nothing caches a principal | `MeEndpointTests.A_revoked_device_is_refused_on_its_next_request`, `Deleting_a_person_refuses_their_devices_at_once` |
 | B6 | A member acts as an admin | People, and shutdown, are admin only. A member sees and revokes only their own devices; another's device answers like a missing one | `PeopleEndpointTests.A_member_cannot_shut_down_or_manage_people`, `DeviceEndpointTests.A_device_can_be_revoked_by_its_owner_or_an_admin_but_not_by_others` |
-| B7 | The home is left without an admin | The last admin cannot be demoted or deleted. One gate serializes every change, so two at once cannot both win. The admin who owns "This computer" cannot be demoted or deleted either, and that device cannot be revoked, so the host always keeps a working admin token | `PeopleServiceTests.Two_concurrent_changes_to_the_two_admins_leave_one_admin`, `The_host_admin_cannot_be_demoted_or_deleted_even_with_another_admin`, `The_local_device_cannot_be_revoked` |
+| B7 | The home is left without an admin | The last admin cannot be demoted or deleted. One gate serializes every change, so two at once cannot both win. The admin who owns "This computer" cannot be demoted or deleted either, and that device cannot be revoked, so the admin socket always has an admin to act as | `PeopleServiceTests.Two_concurrent_changes_to_the_two_admins_leave_one_admin`, `The_host_admin_cannot_be_demoted_or_deleted_even_with_another_admin`, `The_local_device_cannot_be_revoked` |
 | B8 | A stolen database gives tokens (D3) | Only the SHA-256 of a token is stored. No response carries a token or a hash | `PeopleServiceTests.Only_the_hash_is_stored_never_the_token`, `DeviceEndpointTests.Token_hashes_never_appear_in_responses` |
-| B9 | Another account reads the token or the database (D3) | Both are created `0600`, the runtime folder `0700`. A database file with wider permissions is set back to `0600` on open | `SecretTests.CreateNew_makes_the_file_private_and_its_folder_owner_only`, `DaemonProcessTests.A_widened_database_file_is_made_owner_only_again` |
-| B10 | Another account read or planted the local admin token | A token file with permissions other than `0600`, or a symbolic link, is never reused: it is replaced. The runtime folder is set to `0700` first | `SecretTests.A_token_with_loose_permissions_is_replaced_because_someone_may_have_read_it`, `A_symlinked_token_file_is_replaced_and_its_target_left_alone`, `An_open_runtime_folder_is_made_owner_only` |
-| B11 | Timing reveals a token (D4) | Tokens are found by their hash. The local token check is constant-time | `SecretTests.Matches_rejects_missing_short_and_wrong_tokens` |
+| B9 | Another account reads the database or anything in the runtime folder (D3) | The database is created `0600`, the runtime folder is set to `0700` at every start, whatever systemd or the umask made it. A database file with wider permissions is set back to `0600` on open | `SecretTests.CreateNew_makes_the_file_private_and_its_folder_owner_only`, `DaemonProcessTests.A_widened_database_file_is_made_owner_only_again`, `The_admin_socket_is_open_to_connect_and_the_runtime_folder_is_not` |
+| B10 | A secret file for the host admin is read, copied or planted | There is none. The "This computer" device's token is random at each start and kept nowhere; a token file left by step 1 is deleted at start | `DaemonProcessTests.No_admin_token_file_is_written_and_an_old_one_is_removed` |
+| B11 | Timing reveals a token (D4) | Tokens are found by their SHA-256, never compared character by character | `PeopleServiceTests.Only_the_hash_is_stored_never_the_token` |
 | B12 | Error answers tell an attacker why (D5) | One answer per failure kind: unknown, revoked and malformed tokens all get `401 unauthorized`. The reason goes to the log with the source address | `HostTests.Wrong_tokens_of_any_shape_are_refused` |
 | B13 | Secrets in logs (D7) | No token, hash or query string is logged. An unhandled error logs the method and the path only | `HostTests.No_token_appears_in_the_log` |
 | B14 | A change cannot be traced | Every change to a person or a device writes an audit row in the same transaction, with the acting person and device. A refused change writes none. Rows outlive the person they name | `PeopleServiceTests.Every_change_is_audited_with_its_actor`, `A_refused_change_writes_no_audit_row`, `DatabaseTests.Audit_rows_survive_deleting_the_person_they_name` |
@@ -63,15 +66,24 @@ Each decision names the test that proves it. A decision without a test is a defe
 | X8 | A broken or hostile `extensions.json` starts an unknown program name or stops the home | Only built-in names with an absolute program path start. Anything else is logged and skipped. The file is in the settings folder, which needs root to edit under the service | `ExtensionSettingsTests.Bad_json_means_no_extensions_and_one_warning`, `Valid_entries_are_kept_and_each_bad_one_is_dropped_with_a_warning`, `As_the_service_a_program_under_home_is_refused` |
 | X9 | A large or abandoned transfer exhausts the home | Responses stream without being held in memory. A client that goes away cancels the request to the extension | `ProxyTests.Large_responses_stream`, `A_client_that_goes_away_cancels_the_upstream_request` |
 | X10 | An extension outlives Bifröst and keeps serving with nobody checking tokens | The daemon stops every extension before it exits: SIGTERM, then SIGKILL after 10 seconds | `DaemonProcessTests.The_daemon_starts_configured_extensions_and_stops_them_with_itself`, `SupervisorTests.Stop_ends_a_running_extension_quickly` |
+| A1 | Another account on the host acts as the admin | On the admin socket the kernel names the calling account (`SO_PEERCRED`). Any account but the admin's gets `403 not_the_admin` on every route, public ones included, and the attempt is logged with its uid | `AdminSocketTests.Another_account_is_refused`, `Another_account_gets_nothing_at_all_not_even_the_public_routes`, `A_connected_unix_socket_names_this_process_and_account` |
+| A2 | Something borrowed or forged changes who is asking on the admin socket | A bearer token there is ignored: it can neither lower the admin to a member nor let another account in with the admin's token | `AdminSocketTests.A_bearer_token_on_the_admin_socket_changes_nothing`, `Another_account_is_refused_even_with_the_admins_token` |
+| A3 | The admin account skips tokens on the network port | The admin socket is the only token-free way in. The loopback port still answers `401` without a token. The `Host` check holds on the socket too | `AdminSocketTests.The_loopback_port_still_needs_a_token`, `The_host_check_holds_on_the_admin_socket_too` |
+| A4 | A wrong or planted `admin.json` makes someone else the admin | The file is in the settings folder, which only root can write under the service. Root is never the admin. A file that cannot be read stops the start instead of falling back to another account | `ServiceCommandTests.Root_cannot_be_the_admin`, `DaemonProcessTests.A_broken_admin_json_exits_with_74_and_says_why`, `An_admin_json_naming_another_account_shuts_this_one_out` |
+| A5 | A compromised Bifröst or extension reaches the rest of the machine | The service runs as its own account with no shell and no home. The unit makes the system read-only, hides `/home`, gives a private `/tmp` and no devices, forbids new privileges and allows only Unix and IP sockets | `ServiceCommandTests.The_unit_is_sandboxed` |
+| A6 | The installer does something the admin did not ask for | It refuses without root and from the `dotnet` host, prints each command and file before acting, gives the same result when run twice, and never touches the data. Uninstall keeps the data unless `--purge` | `ServiceCommandTests.Install_refuses_without_root`, `Install_says_each_thing_before_doing_it`, `Install_twice_gives_the_same_files_and_commands`, `Uninstall_keeps_data_and_says_so` |
+
+Accepted for now: any program running as the admin account is the admin. The system password
+prompt for host-only actions (design §5) comes with the first such action (ADR 002).
 
 Not covered yet: if Bifröst itself is killed with SIGKILL, its extensions keep running until the
-service manager cleans up. The systemd unit (step 2c) ends the whole control group.
+service manager cleans up. Under the systemd unit, systemd ends the whole control group.
 
 ## Later steps
 
 | Design §11 row | Step |
 |---|---|
-| Another account on the host acts as the admin (admin socket, peer credentials, system password prompt) | 2 |
+| Host-only actions ask for the system password (polkit) | with the first host-only action |
 | A device on the Wi-Fi uses the home; an impostor home; home key leak | 3 |
 | The browser fallback is read on the wire | 3 |
 | A tampered or fake extension release; a bad update | 5 |
