@@ -261,4 +261,25 @@ public sealed class QuestionServiceTests : IAsyncLifetime
         Assert.Equal(QuestionState.Withdrawn, (await waiting.WaitAsync(TimeSpan.FromSeconds(5)))!.State);
         Assert.Null(await _questions.WaitUntilClosedAsync(Guid.NewGuid(), TimeSpan.FromSeconds(30), CancellationToken.None));
     }
+
+    [Fact]
+    public void Asking_and_withdrawing_in_a_loop_does_not_grow_without_bound()
+    {
+        var other = Ask(asker: "saga");
+        _questions.Withdraw(other.Id, "saga");
+
+        for (var i = 0; i < 1000; i++) _questions.Withdraw(Ask().Id, "sleipnir");
+
+        Assert.InRange(_questions.Count, 1, 201); // sleipnir's closed ones are capped at 200, plus saga's one
+        Assert.NotNull(_questions.Get(other.Id)); // one asker's flood does not push out another's
+    }
+
+    [Fact]
+    public void An_asker_cannot_hold_more_than_200_open_questions()
+    {
+        for (var i = 0; i < 200; i++) Ask();
+
+        Assert.Equal("too_many_questions", Assert.Throws<QuestionException>(() => Ask()).Code);
+        Assert.NotNull(Ask(asker: "saga")); // another asker is not affected
+    }
 }

@@ -25,6 +25,13 @@ public sealed partial class QuestionService(PeopleService people, TimeProvider t
 
     public static readonly TimeSpan MaxWait = TimeSpan.FromSeconds(30);
     private const int MaxOpenPerAsker = 200;
+    private const int MaxClosedPerAsker = 200;
+
+    /// <summary>How many questions are held, open and closed. For tests of the memory bound.</summary>
+    public int Count
+    {
+        get { lock (_gate) return _questions.Count; }
+    }
     private static readonly TimeSpan MinLife = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan MaxLife = TimeSpan.FromDays(7);
     private static readonly TimeSpan KeepClosed = TimeSpan.FromHours(1);
@@ -68,6 +75,13 @@ public sealed partial class QuestionService(PeopleService people, TimeProvider t
             foreach (var old in _questions.Where(q => q.Value.Question.State != QuestionState.Open && now - q.Value.ClosedAt > KeepClosed).Select(q => q.Key).ToList())
             {
                 _questions.Remove(old);
+            }
+            // Closed questions are kept a while so the asker can read how they ended, but an asker that
+            // asks and withdraws in a loop must not grow the home's memory: its oldest closed ones go first.
+            foreach (var extra in _questions.Where(q => q.Value.Question.State != QuestionState.Open && q.Value.Question.Asker == asker)
+                         .OrderByDescending(q => q.Value.Question.Seq).Skip(MaxClosedPerAsker - 1).Select(q => q.Key).ToList())
+            {
+                _questions.Remove(extra);
             }
             if (_questions.Values.Count(q => q.Question.State == QuestionState.Open && q.Question.Asker == asker) >= MaxOpenPerAsker)
             {
