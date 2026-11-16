@@ -147,4 +147,33 @@ public class DaemonProcessTests
         Assert.Equal(64, await process.WaitForExitAsync());
         Assert.Contains("daemon", process.Output, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task The_daemon_starts_configured_extensions_and_stops_them_with_itself()
+    {
+        using var machine = new BifrostMachine();
+        Directory.CreateDirectory(machine.ConfigDir);
+        File.WriteAllText(Path.Combine(machine.ConfigDir, "extensions.json"),
+            JsonSerializer.Serialize(new Dictionary<string, object> { ["sleipnir"] = new { program = Extensions.FakeExtension.Program } }));
+        using var daemon = machine.Start("daemon");
+        var info = await machine.WaitForDaemonAsync(daemon);
+        using var admin = ClientFor(info.Port, machine.Token);
+
+        HttpResponseMessage? echo = null;
+        var deadline = DateTime.UtcNow.AddSeconds(20);
+        while (DateTime.UtcNow < deadline && echo?.StatusCode != HttpStatusCode.OK)
+        {
+            echo = await admin.GetAsync("/x/sleipnir/hello");
+            if (echo.StatusCode != HttpStatusCode.OK) await Task.Delay(100);
+        }
+        Assert.Equal(HttpStatusCode.OK, echo!.StatusCode);
+        var extensions = JsonDocument.Parse(await admin.GetStringAsync("/api/v1/extensions")).RootElement;
+        var childPid = extensions[0].GetProperty("pid").GetInt32();
+
+        daemon.Signal(SIGTERM);
+
+        Assert.Equal(0, await daemon.WaitForExitAsync(20));
+        Assert.False(Directory.Exists($"/proc/{childPid}") && !File.ReadAllText($"/proc/{childPid}/status").Contains("zombie", StringComparison.Ordinal),
+            "the extension outlived the daemon");
+    }
 }

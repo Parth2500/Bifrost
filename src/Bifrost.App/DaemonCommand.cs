@@ -1,14 +1,18 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Text;
+using Bifrost.Server.Extensions;
 using Bifrost.Server.Hosting;
 using Bifrost.Server.People;
 using Bifrost.Server.Persistence;
 using Bifrost.Server.Security;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Bifrost.App;
 
-/// <summary><c>bifrost daemon</c>: the home, with its loopback API.</summary>
+/// <summary><c>bifrost daemon</c>: the home, with its loopback API and its extensions.</summary>
 internal static class DaemonCommand
 {
     /// <summary>Exit code for "Bifröst could not start" (sysexits EX_IOERR); 1 means another instance is running.</summary>
@@ -57,10 +61,29 @@ internal static class DaemonCommand
         using var people = new PeopleService(database, TimeProvider.System);
         await people.EnsureLocalAdminAsync(Environment.UserName, token);
 
-        await using var host = BifrostHost.Create(new BifrostHostOptions(), people, TimeProvider.System);
+        using var logFactory = LoggerFactory.Create(logging => logging.AddConsole().SetMinimumLevel(LogLevel.Warning));
+        using var logs = new FactoryLogs(logFactory);
+        // The service's unit hides /home, so programs there are refused. INVOCATION_ID alone does not
+        // say "service": a desktop session passes its own down to every terminal. SYSTEMD_EXEC_PID
+        // names the one process systemd itself started.
+        var asService = Environment.GetEnvironmentVariable("SYSTEMD_EXEC_PID") == Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
+        var programs = ExtensionSettings.Load(Path.Combine(paths.Settings, ExtensionSettings.FileName), asService,
+            logFactory.CreateLogger("Bifrost.Extensions"));
+        await using var extensions = new ExtensionManager(programs, paths.Runtime, paths.Data, TimeProvider.System, logs);
+        await using var extensionApi = new ExtensionApiHost(extensions.All, people);
+        // A Unix socket's path is limited to 108 bytes; say so instead of failing deep inside the listener.
+        if (extensions.All.SelectMany(e => new[] { e.SocketPath, e.ApiSocketPath }).FirstOrDefault(p => Encoding.UTF8.GetByteCount(p) > 107) is { } tooLong)
+        {
+            throw new IOException($"the runtime folder's path is too long for an extension socket ({tooLong}).");
+        }
+
+        await using var host = BifrostHost.Create(new BifrostHostOptions(), people, TimeProvider.System, extensions: extensions);
         await host.StartAsync();
         try
         {
+            // Bifröst's own listener first, then the socket extensions ask on, then the extensions.
+            await extensionApi.StartAsync();
+            await extensions.StartAllAsync();
             DaemonInfo.Write(paths.Runtime, new DaemonInfo(host.Port, Environment.ProcessId, Version));
             Console.WriteLine($"Bifröst listening on http://127.0.0.1:{host.Port}");
             try
@@ -75,10 +98,23 @@ internal static class DaemonCommand
         finally
         {
             DaemonInfo.Delete(paths.Runtime);
+            // No new requests, then the extensions, then (on dispose) the socket they ask on.
             await host.StopAsync();
+            await extensions.StopAllAsync();
         }
         return 0;
     }
 
     private static string Version => typeof(DaemonCommand).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+
+    /// <summary>Hands the console log to the parts that take a provider.</summary>
+    private sealed class FactoryLogs(ILoggerFactory factory) : ILoggerProvider
+    {
+        public ILogger CreateLogger(string categoryName) => factory.CreateLogger(categoryName);
+
+        public void Dispose()
+        {
+            // The factory is owned, and disposed, by the daemon.
+        }
+    }
 }

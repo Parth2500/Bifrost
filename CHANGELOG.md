@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Added: extensions (step 2b)
+
+- **Extensions run under the daemon.** Each one named in `extensions.json` (in the settings folder)
+  starts as a child process after Bifröst's own listener and stops with it: SIGTERM, then SIGKILL
+  after 10 seconds. Only the built-in names start: `sleipnir`, `saga`, `files`, `norns`. A broken
+  file or entry is logged and skipped.
+- **Restarts:** a crashed extension restarts after 1, 2, 4 … 60 seconds. Five crashes in 10 minutes
+  mark it `failed` until Bifröst restarts. Bifröst keeps answering either way.
+- **`/x/<name>/…`** forwards to the extension over a private Unix socket. Bifröst checks the device
+  token, removes the client's `Authorization`, `Cookie`, `Forwarded`, `X-Forwarded-*` and
+  `X-Bifrost-*` headers, and adds `X-Bifrost-Person-Id`, `-Role`, `-Device-Id`, `-Device-Kind` and
+  `X-Forwarded-Prefix`. An extension that is not running answers `503 extension_unavailable`.
+- **`GET /api/v1/extensions`** lists each extension with its state, pid and restart count.
+- **The extension API:** a second private socket per extension (`bifrost.sock`), where it looks up
+  a person or a device by id.
+
 ### Added: people, devices and the loopback API (step 1)
 
 - **`bifrost daemon`** runs the home as one instance per machine. It listens on `127.0.0.1` and
