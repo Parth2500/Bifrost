@@ -165,6 +165,14 @@ public sealed class PeopleService(IDbContextFactory<BifrostDb> dbFactory, TimePr
         return true;
     });
 
+    /// <summary>Writes one audit row for something another part of Bifröst did on a person's word (an answer to a question).</summary>
+    public Task RecordAsync(Principal actor, string kind, Guid subject, string? detail) => With(async db =>
+    {
+        Audit(db, actor, kind, subject, detail);
+        await db.SaveChangesAsync();
+        return true;
+    });
+
     public Task<PersonEntity?> GetPersonAsync(Guid id) => With(db => db.People.FirstOrDefaultAsync(p => p.Id == id));
 
     public Task<IReadOnlyList<PersonEntity>> ListPeopleAsync() =>
