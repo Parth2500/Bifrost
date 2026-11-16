@@ -22,6 +22,7 @@ public sealed class HostFixture : IAsyncDisposable
     public required Principal Admin { get; init; }
     public required FakeTimeProvider Time { get; init; }
     public required CapturingLogs Logs { get; init; }
+    public required Bifrost.Server.Questions.QuestionService Questions { get; init; }
 
     /// <summary>A client on the admin socket: no token, the operating system says who is calling.</summary>
     public required HttpClient AdminHttp { get; init; }
@@ -56,13 +57,14 @@ public sealed class HostFixture : IAsyncDisposable
         }
 
         var options = new BifrostHostOptions(port, new AdminSocketOptions(adminSocket, adminUid ?? Bifrost.Server.Security.PeerCredentials.CurrentUid()));
-        var host = BifrostHost.Create(options, people, time, logs, manager);
+        var questions = new Bifrost.Server.Questions.QuestionService(people, time);
+        var host = BifrostHost.Create(options, people, time, logs, manager, questions);
         await host.StartAsync();
         var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{host.Port}") };
         return new HostFixture
         {
             Host = host, Http = http, Token = token, People = people, Admin = admin, Database = database, Time = time, Logs = logs,
-            Extensions = manager, Root = root, AdminHttp = UnixHttp.Client(adminSocket), AdminSocket = adminSocket,
+            Extensions = manager, Root = root, AdminHttp = UnixHttp.Client(adminSocket), AdminSocket = adminSocket, Questions = questions,
         };
     }
 
@@ -115,6 +117,7 @@ public sealed class HostFixture : IAsyncDisposable
         {
             try { Directory.Delete(Root, recursive: true); } catch (IOException) { }
         }
+        Questions.Dispose();
         People.Dispose();
         Database.Dispose();
     }

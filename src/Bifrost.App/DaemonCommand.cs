@@ -1,10 +1,12 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+using Bifrost.Server.Api;
 using Bifrost.Server.Extensions;
 using Bifrost.Server.Hosting;
 using Bifrost.Server.People;
 using Bifrost.Server.Persistence;
+using Bifrost.Server.Questions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -76,7 +78,8 @@ internal static class DaemonCommand
         var programs = ExtensionSettings.Load(Path.Combine(paths.Settings, ExtensionSettings.FileName), asService,
             logFactory.CreateLogger("Bifrost.Extensions"));
         await using var extensions = new ExtensionManager(programs, paths.Runtime, paths.Data, TimeProvider.System, logs);
-        await using var extensionApi = new ExtensionApiHost(extensions.All, people);
+        using var questions = new QuestionService(people, TimeProvider.System);
+        await using var extensionApi = new ExtensionApiHost(extensions.All, people, routes => QuestionEndpoints.MapForExtensions(routes, questions));
         // A Unix socket's path is limited to 108 bytes; say so instead of failing deep inside the listener.
         if (extensions.All.SelectMany(e => new[] { e.SocketPath, e.ApiSocketPath }).Append(paths.AdminSocket)
                 .FirstOrDefault(p => Encoding.UTF8.GetByteCount(p) > 107) is { } tooLong)
@@ -84,7 +87,7 @@ internal static class DaemonCommand
             throw new IOException($"the runtime folder's path is too long for a socket ({tooLong}).");
         }
 
-        await using var host = BifrostHost.Create(new BifrostHostOptions(Admin: new AdminSocketOptions(paths.AdminSocket, admin.Uid)), people, TimeProvider.System, extensions: extensions);
+        await using var host = BifrostHost.Create(new BifrostHostOptions(Admin: new AdminSocketOptions(paths.AdminSocket, admin.Uid)), people, TimeProvider.System, extensions: extensions, questions: questions);
         await host.StartAsync();
         try
         {
