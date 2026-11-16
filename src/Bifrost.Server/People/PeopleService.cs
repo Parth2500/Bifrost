@@ -20,6 +20,14 @@ public sealed class PeopleService(IDbContextFactory<BifrostDb> dbFactory, TimePr
     public static string HashToken(string token) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
+    /// <summary>
+    /// Makes sure the home has an admin and the "This computer" device. The device's token is random,
+    /// new at each start and kept nowhere: the host admin comes in through the admin socket instead.
+    /// </summary>
+    public Task<Principal> EnsureLocalAdminAsync(string adminName) =>
+        EnsureLocalAdminAsync(adminName, Base64Url(RandomNumberGenerator.GetBytes(32)));
+
+    /// <summary>As above, with a token the caller knows. For tests, which also reach the host admin by token.</summary>
     public Task<Principal> EnsureLocalAdminAsync(string adminName, string localToken) => With(async db =>
     {
         var admin = await db.People.Where(p => p.Role == PersonRole.Admin).OrderBy(p => p.CreatedAt).FirstOrDefaultAsync();
@@ -45,13 +53,22 @@ public sealed class PeopleService(IDbContextFactory<BifrostDb> dbFactory, TimePr
             db.Devices.Add(device);
             Audit(db, null, "device.issued", device.Id, null);
         }
-        device.TokenHash = HashToken(localToken); // the token file may have been regenerated since the last start
+        device.TokenHash = HashToken(localToken); // whatever worked before the restart no longer does
         device.RevokedAt = null;
         if (!await db.People.AnyAsync(p => p.Id == device.PersonId && p.Role == PersonRole.Admin)) device.PersonId = admin.Id;
 
         await db.SaveChangesAsync();
         var owner = await db.People.SingleAsync(p => p.Id == device.PersonId);
         return ToPrincipal(owner, device);
+    });
+
+    /// <summary>The host admin as they are now: the "This computer" device and whoever owns it. Read fresh each time.</summary>
+    public Task<Principal?> LocalPrincipalAsync() => With<Principal?>(async db =>
+    {
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.IsLocal && d.RevokedAt == null);
+        if (device is null) return null;
+        var person = await db.People.SingleAsync(p => p.Id == device.PersonId);
+        return ToPrincipal(person, device);
     });
 
     public Task<Principal?> AuthenticateAsync(string token) => With<Principal?>(async db =>
@@ -179,7 +196,7 @@ public sealed class PeopleService(IDbContextFactory<BifrostDb> dbFactory, TimePr
 
     /// <summary>
     /// The host admin owns the "This computer" device. Demoting or deleting them would leave the host with
-    /// no admin token until a restart, and nothing in step 1 can issue another.
+    /// no admin until a restart: the admin socket acts as that device.
     /// </summary>
     private static Task<bool> OwnsLocalDevice(BifrostDb db, Guid personId) =>
         db.Devices.AnyAsync(d => d.IsLocal && d.PersonId == personId);

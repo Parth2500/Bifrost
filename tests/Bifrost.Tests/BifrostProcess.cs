@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
 using Bifrost.Server.Hosting;
@@ -16,6 +17,10 @@ public sealed class BifrostMachine : IDisposable
     public string DataDir => Path.Combine(Root, "state");
     public string ConfigDir => Path.Combine(Root, "config");
     public string TokenPath => Path.Combine(RuntimeDir, "admin.token");
+    public string AdminSocket => Path.Combine(Root, "bifrost-admin", "admin.sock");
+
+    /// <summary>The host admin's way in: the admin socket, as the account running the tests.</summary>
+    public HttpClient AdminClient() => UnixHttp.Client(AdminSocket);
     public string DatabasePath => Path.Combine(DataDir, "bifrost.db");
 
     public BifrostMachine() => Directory.CreateDirectory(Root);
@@ -50,8 +55,6 @@ public sealed class BifrostMachine : IDisposable
         }
         throw new TimeoutException("daemon.json never appeared:\n" + process.Output);
     }
-
-    public string Token => File.ReadAllText(TokenPath).Trim();
 
     public void Dispose()
     {
@@ -104,4 +107,26 @@ internal static class NativeMethods
 {
     [DllImport("libc", EntryPoint = "kill", SetLastError = true)]
     internal static extern int Kill(int pid, int sig);
+}
+
+/// <summary>HTTP over a Unix socket.</summary>
+public static class UnixHttp
+{
+    public static HttpClient Client(string socketPath) => new(new SocketsHttpHandler
+    {
+        ConnectCallback = async (_, ct) =>
+        {
+            var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            try
+            {
+                await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath), ct);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
+        },
+    }) { BaseAddress = new Uri("http://localhost") };
 }

@@ -6,6 +6,7 @@ using Bifrost.Server.Api;
 using Bifrost.Server.Extensions;
 using Bifrost.Server.People;
 using Bifrost.Server.Security;
+using Microsoft.AspNetCore.Connections.Features;
 using Microsoft.AspNetCore.Http.Json;
 using Scalar.AspNetCore;
 
@@ -13,11 +14,16 @@ namespace Bifrost.Server.Hosting;
 
 /// <summary>
 /// The loopback API (design §6.1, §6.4): HTTP on 127.0.0.1 and ::1 only, a bearer device token on every
-/// route but server info, a <c>Host</c> allowlist, no cookies and no CORS.
+/// route but server info, a <c>Host</c> allowlist, no cookies and no CORS. The host admin has a second
+/// way in, the admin socket (design §5): there the kernel says which account is calling, and only the
+/// recorded admin account is let through, as the "This computer" device.
 /// </summary>
 public sealed partial class BifrostHost : IAsyncDisposable
 {
     private const int PortAttempts = 20;
+    private const string AdminPeerKey = "bifrost.admin-peer";
+    private const UnixFileMode AdminFolderMode = (UnixFileMode)0b111_101_101; // 0755: other accounts must reach the socket
+    private const UnixFileMode AdminSocketMode = (UnixFileMode)0b110_110_110; // 0666: connecting needs write; the peer check decides
     private static readonly string[] AllowedHosts = ["localhost", "127.0.0.1", "[::1]"];
 
     private readonly BifrostHostOptions _options;
@@ -61,6 +67,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
             try
             {
                 await app.StartAsync(ct);
+                if (_options.Admin is { } admin) File.SetUnixFileMode(admin.Path, AdminSocketMode);
                 _app = app;
                 Port = new Uri(app.Urls.First()).Port;
                 return;
@@ -144,6 +151,19 @@ public sealed partial class BifrostHost : IAsyncDisposable
             kestrel.Limits.MaxRequestBodySize = 1024 * 1024;
             kestrel.Listen(IPAddress.Loopback, port);
             if (withIPv6) kestrel.Listen(IPAddress.IPv6Loopback, port);
+            if (_options.Admin is { } admin)
+            {
+                var folder = Path.GetDirectoryName(admin.Path)!;
+                Directory.CreateDirectory(folder);
+                if (File.GetUnixFileMode(folder) != AdminFolderMode) File.SetUnixFileMode(folder, AdminFolderMode); // whatever the umask said
+                if (File.Exists(admin.Path)) File.Delete(admin.Path); // left by a crash; the instance lock says nobody is using it
+                kestrel.ListenUnixSocket(admin.Path, listen => listen.Use(next => connection =>
+                {
+                    // Asked once per connection, from the kernel. A missing answer is kept as "nobody".
+                    connection.Items[AdminPeerKey] = new AdminPeer(PeerCredentials.Of(connection.Features.Get<IConnectionSocketFeature>()?.Socket)?.Uid);
+                    return next(connection);
+                }));
+            }
         });
         builder.Services.Configure<JsonOptions>(json =>
         {
@@ -205,6 +225,12 @@ public sealed partial class BifrostHost : IAsyncDisposable
 
     private async Task Authenticate(HttpContext context, Func<Task> next)
     {
+        if (context.Features.Get<IConnectionItemsFeature>()?.Items.TryGetValue(AdminPeerKey, out var tag) == true)
+        {
+            await AuthenticateAdminSocket(context, (tag as AdminPeer)?.Uid, next);
+            return;
+        }
+
         var isPublic = HttpMethods.IsGet(context.Request.Method) && context.Request.Path == "/api/v1/server";
         var guarded = context.Request.Path.StartsWithSegments("/api") || context.Request.Path.StartsWithSegments(ExtensionProxy.Prefix);
         if (isPublic || !guarded)
@@ -242,6 +268,29 @@ public sealed partial class BifrostHost : IAsyncDisposable
         await Unauthorized(context);
     }
 
+    /// <summary>
+    /// On the admin socket the calling account is the only credential, for every route. A bearer
+    /// token there is ignored: it could only ever lower or confuse who is asking.
+    /// </summary>
+    private async Task AuthenticateAdminSocket(HttpContext context, uint? peerUid, Func<Task> next)
+    {
+        if (_options.Admin is not { } admin || peerUid != admin.Uid)
+        {
+            LogNotTheAdmin(Logger(context), peerUid?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown");
+            await Problem.WriteAsync(context, 403, "not_the_admin", "Only this computer's admin account can use this socket.");
+            return;
+        }
+        if (await _people.LocalPrincipalAsync() is not { } principal)
+        {
+            await Problem.WriteAsync(context, 503, "not_ready", "Bifröst has no admin yet.");
+            return;
+        }
+        context.SetPrincipal(principal);
+        await next();
+    }
+
+    private sealed record AdminPeer(uint? Uid);
+
     private static Task Unauthorized(HttpContext context)
     {
         context.Response.Headers.WWWAuthenticate = "Bearer";
@@ -263,4 +312,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Refused an unknown or revoked device token from {Source}")]
     private static partial void LogRefusedToken(ILogger logger, string source);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Refused account {Uid} on the admin socket: it is not the admin")]
+    private static partial void LogNotTheAdmin(ILogger logger, string uid);
 }

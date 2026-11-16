@@ -17,7 +17,7 @@ public class AppPathsTests
             ("CONFIGURATION_DIRECTORY", "/etc/bifrost"), ("STATE_DIRECTORY", "/var/lib/bifrost"),
             ("RUNTIME_DIRECTORY", "/run/bifrost"), ("XDG_RUNTIME_DIR", "/run/user/1000")), "/home/u");
 
-        Assert.Equal(new AppPaths("/etc/bifrost", "/var/lib/bifrost", "/run/bifrost"), paths);
+        Assert.Equal(new AppPaths("/etc/bifrost", "/var/lib/bifrost", "/run/bifrost", "/run/bifrost-admin"), paths);
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public class AppPathsTests
     {
         var paths = AppPaths.Resolve(Env(), "/home/u");
 
-        Assert.Equal(new AppPaths("/home/u/.config/bifrost", "/home/u/.local/share/bifrost", "/home/u/.local/state/bifrost"), paths);
+        Assert.Equal(new AppPaths("/home/u/.config/bifrost", "/home/u/.local/share/bifrost", "/home/u/.local/state/bifrost", "/home/u/.local/state/bifrost-admin"), paths);
     }
 
     [Fact]
@@ -41,7 +41,7 @@ public class AppPathsTests
     {
         var paths = AppPaths.Resolve(Env(("XDG_CONFIG_HOME", "/c"), ("XDG_DATA_HOME", "/d"), ("XDG_RUNTIME_DIR", "/run/user/1000")), "/home/u");
 
-        Assert.Equal(new AppPaths("/c/bifrost", "/d/bifrost", "/run/user/1000/bifrost"), paths);
+        Assert.Equal(new AppPaths("/c/bifrost", "/d/bifrost", "/run/user/1000/bifrost", "/run/user/1000/bifrost-admin"), paths);
     }
 
     [Fact]
@@ -50,5 +50,23 @@ public class AppPathsTests
         var paths = AppPaths.Resolve(Env(("STATE_DIRECTORY", ""), ("XDG_DATA_HOME", "")), "/home/u");
 
         Assert.Equal("/home/u/.local/share/bifrost", paths.Data);
+    }
+
+    [Fact]
+    public void The_admin_runtime_folder_is_the_second_systemd_runtime_directory()
+    {
+        var paths = AppPaths.Resolve(Env(("RUNTIME_DIRECTORY", "/run/bifrost:/run/bifrost-admin")), "/home/u");
+
+        Assert.Equal("/run/bifrost", paths.Runtime);
+        Assert.Equal("/run/bifrost-admin", paths.AdminRuntime);
+        Assert.Equal("/run/bifrost-admin/admin.sock", paths.AdminSocket);
+    }
+
+    [Fact]
+    public void With_one_runtime_directory_the_admin_folder_sits_beside_it()
+    {
+        var paths = AppPaths.Resolve(Env(("RUNTIME_DIRECTORY", "/tmp/x/run")), "/home/u");
+
+        Assert.Equal("/tmp/x/bifrost-admin", paths.AdminRuntime);
     }
 }

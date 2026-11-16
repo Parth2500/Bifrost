@@ -22,12 +22,17 @@ public sealed class HostFixture : IAsyncDisposable
     public required Principal Admin { get; init; }
     public required FakeTimeProvider Time { get; init; }
     public required CapturingLogs Logs { get; init; }
+
+    /// <summary>A client on the admin socket: no token, the operating system says who is calling.</summary>
+    public required HttpClient AdminHttp { get; init; }
+    public required string AdminSocket { get; init; }
     public ExtensionManager? Extensions { get; init; }
     public string? Root { get; init; }
     public int Port => Host.Port;
 
     /// <param name="extensions">Fake extensions to run: name → <c>FAKE_MODE</c>.</param>
-    public static async Task<HostFixture> StartAsync(int port = 0, IReadOnlyDictionary<string, string>? extensions = null)
+    /// <param name="adminUid">The account the admin socket accepts; this process's own when null.</param>
+    public static async Task<HostFixture> StartAsync(int port = 0, IReadOnlyDictionary<string, string>? extensions = null, uint? adminUid = null)
     {
         var database = Bifrost.Server.Persistence.Database.OpenMemory();
         await Bifrost.Server.Persistence.Database.MigrateAsync(database);
@@ -38,10 +43,11 @@ public sealed class HostFixture : IAsyncDisposable
         var logs = new CapturingLogs();
 
         ExtensionManager? manager = null;
-        string? root = null;
+        var root = Path.Combine(Path.GetTempPath(), "bifrost-host-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+        var adminSocket = Path.Combine(root, "bifrost-admin", "admin.sock");
         if (extensions is not null)
         {
-            root = Path.Combine(Path.GetTempPath(), "bifrost-host-" + Guid.NewGuid().ToString("N")[..8]);
             manager = new ExtensionManager(
                 extensions.Keys.ToDictionary(k => k, _ => Bifrost.Tests.Extensions.FakeExtension.Program),
                 Path.Combine(root, "run"), Path.Combine(root, "state"), time, logs,
@@ -49,13 +55,14 @@ public sealed class HostFixture : IAsyncDisposable
             await manager.StartAllAsync();
         }
 
-        var host = BifrostHost.Create(new BifrostHostOptions(port), people, time, logs, manager);
+        var options = new BifrostHostOptions(port, new AdminSocketOptions(adminSocket, adminUid ?? Bifrost.Server.Security.PeerCredentials.CurrentUid()));
+        var host = BifrostHost.Create(options, people, time, logs, manager);
         await host.StartAsync();
         var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{host.Port}") };
         return new HostFixture
         {
             Host = host, Http = http, Token = token, People = people, Admin = admin, Database = database, Time = time, Logs = logs,
-            Extensions = manager, Root = root,
+            Extensions = manager, Root = root, AdminHttp = UnixHttp.Client(adminSocket), AdminSocket = adminSocket,
         };
     }
 
@@ -101,6 +108,7 @@ public sealed class HostFixture : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         Http.Dispose();
+        AdminHttp.Dispose();
         await Host.DisposeAsync();
         if (Extensions is not null) await Extensions.StopAllAsync();
         if (Root is not null)

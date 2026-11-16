@@ -5,7 +5,6 @@ using Bifrost.Server.Extensions;
 using Bifrost.Server.Hosting;
 using Bifrost.Server.People;
 using Bifrost.Server.Persistence;
-using Bifrost.Server.Security;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -17,6 +16,7 @@ internal static class DaemonCommand
 {
     /// <summary>Exit code for "Bifröst could not start" (sysexits EX_IOERR); 1 means another instance is running.</summary>
     public const int StartFailureExitCode = 74;
+    private const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
     public static async Task<int> RunAsync()
     {
@@ -55,11 +55,17 @@ internal static class DaemonCommand
         using var sigInt = PosixSignalRegistration.Create(PosixSignal.SIGINT, OnSignal);
         using var sigHup = PosixSignalRegistration.Create(PosixSignal.SIGHUP, OnSignal);
 
-        var token = LocalAdminToken.LoadOrCreate(paths.Runtime);
+        // systemd creates the runtime folder 0755; nothing in it is for other accounts.
+        Directory.CreateDirectory(paths.Runtime, OwnerOnly);
+        if (File.GetUnixFileMode(paths.Runtime) != OwnerOnly) File.SetUnixFileMode(paths.Runtime, OwnerOnly);
+        // The token file of step 1 is gone; one left by an older version must not stay readable.
+        File.Delete(Path.Combine(paths.Runtime, "admin.token"));
+
+        var admin = AdminSettings.Load(paths.Settings);
         using var database = Database.OpenFile(Path.Combine(paths.Data, "bifrost.db"));
         await Database.MigrateAsync(database);
         using var people = new PeopleService(database, TimeProvider.System);
-        await people.EnsureLocalAdminAsync(Environment.UserName, token);
+        await people.EnsureLocalAdminAsync(admin.Name);
 
         using var logFactory = LoggerFactory.Create(logging => logging.AddConsole().SetMinimumLevel(LogLevel.Warning));
         using var logs = new FactoryLogs(logFactory);
@@ -72,12 +78,13 @@ internal static class DaemonCommand
         await using var extensions = new ExtensionManager(programs, paths.Runtime, paths.Data, TimeProvider.System, logs);
         await using var extensionApi = new ExtensionApiHost(extensions.All, people);
         // A Unix socket's path is limited to 108 bytes; say so instead of failing deep inside the listener.
-        if (extensions.All.SelectMany(e => new[] { e.SocketPath, e.ApiSocketPath }).FirstOrDefault(p => Encoding.UTF8.GetByteCount(p) > 107) is { } tooLong)
+        if (extensions.All.SelectMany(e => new[] { e.SocketPath, e.ApiSocketPath }).Append(paths.AdminSocket)
+                .FirstOrDefault(p => Encoding.UTF8.GetByteCount(p) > 107) is { } tooLong)
         {
-            throw new IOException($"the runtime folder's path is too long for an extension socket ({tooLong}).");
+            throw new IOException($"the runtime folder's path is too long for a socket ({tooLong}).");
         }
 
-        await using var host = BifrostHost.Create(new BifrostHostOptions(), people, TimeProvider.System, extensions: extensions);
+        await using var host = BifrostHost.Create(new BifrostHostOptions(Admin: new AdminSocketOptions(paths.AdminSocket, admin.Uid)), people, TimeProvider.System, extensions: extensions);
         await host.StartAsync();
         try
         {
@@ -85,7 +92,7 @@ internal static class DaemonCommand
             await extensionApi.StartAsync();
             await extensions.StartAllAsync();
             DaemonInfo.Write(paths.Runtime, new DaemonInfo(host.Port, Environment.ProcessId, Version));
-            Console.WriteLine($"Bifröst listening on http://127.0.0.1:{host.Port}");
+            Console.WriteLine($"Bifröst listening on http://127.0.0.1:{host.Port} and, for {admin.Name}, on {paths.AdminSocket}");
             try
             {
                 await host.WaitForShutdownAsync(stop.Token);

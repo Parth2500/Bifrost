@@ -15,7 +15,7 @@ public class DaemonProcessTests
         return http;
     }
 
-    private static async Task<HttpStatusCode> MeAsync(int port, string token)
+    private static async Task<HttpStatusCode> MeAsync(int port, string? token)
     {
         using var http = ClientFor(port, token);
         return (await http.GetAsync("/api/v1/me")).StatusCode;
@@ -30,11 +30,12 @@ public class DaemonProcessTests
         var info = await machine.WaitForDaemonAsync(daemon);
 
         Assert.Equal(daemon.Id, info.Pid);
-        using var admin = ClientFor(info.Port, machine.Token);
+        using var admin = machine.AdminClient();
         var me = JsonDocument.Parse(await admin.GetStringAsync("/api/v1/me")).RootElement;
         Assert.Equal("admin", me.GetProperty("role").GetString());
         Assert.Equal(Environment.UserName, me.GetProperty("personName").GetString());
-        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(machine.TokenPath));
+        Assert.Equal("This computer", me.GetProperty("deviceName").GetString());
+        Assert.Equal(HttpStatusCode.Unauthorized, await MeAsync(info.Port, null)); // the loopback port still needs a token
 
         daemon.Signal(SIGTERM);
 
@@ -49,7 +50,7 @@ public class DaemonProcessTests
         using var daemon = machine.Start("daemon");
         var info = await machine.WaitForDaemonAsync(daemon);
 
-        using var admin = ClientFor(info.Port, machine.Token);
+        using var admin = machine.AdminClient();
         Assert.Equal(HttpStatusCode.Accepted, (await admin.PostAsync("/api/v1/server/shutdown", null)).StatusCode);
 
         Assert.Equal(0, await daemon.WaitForExitAsync(10));
@@ -84,25 +85,62 @@ public class DaemonProcessTests
     }
 
     [Fact]
-    public async Task A_deleted_token_file_is_replaced_and_the_old_token_stops_working()
+    public async Task No_admin_token_file_is_written_and_an_old_one_is_removed()
     {
         using var machine = new BifrostMachine();
-        string old;
-        using (var first = machine.Start("daemon"))
-        {
-            await machine.WaitForDaemonAsync(first);
-            old = machine.Token;
-            first.Signal(SIGTERM);
-            Assert.Equal(0, await first.WaitForExitAsync(10));
-        }
-        File.Delete(machine.TokenPath);
+        Directory.CreateDirectory(machine.RuntimeDir);
+        File.WriteAllText(machine.TokenPath, "abc1234567890123456789012345678901234567890"); // left by step 1
+        using var daemon = machine.Start("daemon");
+        var info = await machine.WaitForDaemonAsync(daemon);
 
-        using var second = machine.Start("daemon");
-        var info = await machine.WaitForDaemonAsync(second);
+        Assert.False(File.Exists(machine.TokenPath));
+        Assert.Equal(HttpStatusCode.Unauthorized, await MeAsync(info.Port, "abc1234567890123456789012345678901234567890"));
+        Assert.DoesNotContain(Directory.EnumerateFiles(machine.Root, "*", SearchOption.AllDirectories),
+            file => file.EndsWith(".token", StringComparison.Ordinal));
+    }
 
-        Assert.NotEqual(old, machine.Token);
-        Assert.Equal(HttpStatusCode.OK, await MeAsync(info.Port, machine.Token));
-        Assert.Equal(HttpStatusCode.Unauthorized, await MeAsync(info.Port, old));
+    [Fact]
+    public async Task The_admin_socket_is_open_to_connect_and_the_runtime_folder_is_not()
+    {
+        using var machine = new BifrostMachine();
+        Directory.CreateDirectory(machine.RuntimeDir);
+        File.SetUnixFileMode(machine.RuntimeDir, (UnixFileMode)0b111_101_101); // 0755, as systemd creates it
+        using var daemon = machine.Start("daemon");
+        await machine.WaitForDaemonAsync(daemon);
+
+        Assert.Equal((UnixFileMode)0b110_110_110, File.GetUnixFileMode(machine.AdminSocket));
+        Assert.Equal((UnixFileMode)0b111_101_101, File.GetUnixFileMode(Path.GetDirectoryName(machine.AdminSocket)!));
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(machine.RuntimeDir));
+    }
+
+    [Fact]
+    public async Task An_admin_json_naming_another_account_shuts_this_one_out()
+    {
+        using var machine = new BifrostMachine();
+        Directory.CreateDirectory(machine.ConfigDir);
+        File.WriteAllText(Path.Combine(machine.ConfigDir, "admin.json"),
+            JsonSerializer.Serialize(new { uid = Bifrost.Server.Security.PeerCredentials.CurrentUid() + 1, name = "someone-else" }));
+        using var daemon = machine.Start("daemon");
+        await machine.WaitForDaemonAsync(daemon);
+
+        using var admin = machine.AdminClient();
+        var response = await admin.GetAsync("/api/v1/me");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Contains("not_the_admin", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_broken_admin_json_exits_with_74_and_says_why()
+    {
+        using var machine = new BifrostMachine();
+        Directory.CreateDirectory(machine.ConfigDir);
+        File.WriteAllText(Path.Combine(machine.ConfigDir, "admin.json"), "{ \"uid\": 0, \"name\": \"root\" }");
+
+        using var daemon = machine.Start("daemon");
+
+        Assert.Equal(74, await daemon.WaitForExitAsync());
+        Assert.Contains("admin.json", daemon.Output, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -157,7 +195,7 @@ public class DaemonProcessTests
             JsonSerializer.Serialize(new Dictionary<string, object> { ["sleipnir"] = new { program = Extensions.FakeExtension.Program } }));
         using var daemon = machine.Start("daemon");
         var info = await machine.WaitForDaemonAsync(daemon);
-        using var admin = ClientFor(info.Port, machine.Token);
+        using var admin = machine.AdminClient();
 
         HttpResponseMessage? echo = null;
         var deadline = DateTime.UtcNow.AddSeconds(20);
