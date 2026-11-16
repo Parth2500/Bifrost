@@ -1,9 +1,9 @@
-# Bifröst threat model (steps 1, 2b and 2c)
+# Bifröst threat model (steps 1 and 2)
 
 Scope: what step 1 builds (design §12): the `bifrost daemon` process, its SQLite store, and the
 loopback HTTP API for people and devices; and what step 2b builds: extensions
 as child processes, the `/x/<name>/…` route and the extension API socket; and what step 2c builds:
-the system service and the admin socket. The rows of design §11 that later
+the system service and the admin socket; and step 2d: asking the admin and the desk companion. The rows of design §11 that later
 steps build are listed at the end, with the step that owns each.
 
 Each decision names the test that proves it. A decision without a test is a defect.
@@ -24,6 +24,8 @@ Each decision names the test that proves it. A decision without a test is a defe
 | Extension socket | `x/<name>/extension.sock` in the runtime folder. The extension listens; only Bifröst calls it. |
 | Extension API socket | `x/<name>/bifrost.sock`. Bifröst listens; the extension asks about people and devices. |
 | Identity headers | `X-Bifrost-Person-Id`, `X-Bifrost-Role`, `X-Bifrost-Device-Id`, `X-Bifrost-Device-Kind`. Bifröst sets them on every forwarded request. |
+| Question | Something Bifröst or an extension asks the admin: a title, a short text, 2 to 4 choices and an expiry. Kept in memory only. |
+| Desk companion | `bifrost desk`, a program in the admin's desktop session that shows questions as notifications. It talks to Bifröst on the admin socket. |
 | Audit log | The `audit` table. One row per change to a person or a device. |
 
 ## Trust boundaries
@@ -72,6 +74,13 @@ Each decision names the test that proves it. A decision without a test is a defe
 | A4 | A wrong or planted `admin.json` makes someone else the admin | The file is in the settings folder, which only root can write under the service. Root is never the admin. A file that cannot be read stops the start instead of falling back to another account | `ServiceCommandTests.Root_cannot_be_the_admin`, `DaemonProcessTests.A_broken_admin_json_exits_with_74_and_says_why`, `An_admin_json_naming_another_account_shuts_this_one_out` |
 | A5 | A compromised Bifröst or extension reaches the rest of the machine | The service runs as its own account with no shell and no home. The unit makes the system read-only, hides `/home`, gives a private `/tmp` and no devices, forbids new privileges and allows only Unix and IP sockets | `ServiceCommandTests.The_unit_is_sandboxed` |
 | A6 | The installer does something the admin did not ask for | It refuses without root and from the `dotnet` host, prints each command and file before acting, gives the same result when run twice, and never touches the data. Uninstall keeps the data unless `--purge` | `ServiceCommandTests.Install_refuses_without_root`, `Install_says_each_thing_before_doing_it`, `Install_twice_gives_the_same_files_and_commands`, `Uninstall_keeps_data_and_says_so` |
+| Q1 | A member answers a question (approves their own download) | Only admins list or answer questions, on the loopback API and the admin socket alike. An extension cannot answer at all: its socket has no answer route | `QuestionServiceTests.A_member_cannot_answer`, `QuestionRouteTests.A_member_gets_403` |
+| Q2 | Two answers at once both count, or an answer cannot be traced | One answer wins. It is written to the audit log (who, which question, which choice) before it counts; a later answer gets `409 already_closed` with how the question ended | `QuestionServiceTests.Two_answers_at_once_record_one`, `The_first_answer_wins_and_is_audited`, `QuestionRouteTests.A_second_answer_gets_409_with_how_it_ended` |
+| Q3 | An extension reads, withdraws or forges another extension's question | The asker is the extension whose socket the request arrived on. Another extension's question looks like a missing one | `QuestionRouteTests.One_extension_cannot_read_or_withdraw_anothers_question` |
+| Q4 | An extension floods the admin or the home's memory with questions | Every limit is checked (lengths, 2 to 4 choices, expiry between a minute and a week). An asker holds at most 200 open questions, and at most 200 closed ones are kept for it | `QuestionServiceTests.Ask_validates_every_limit`, `An_asker_cannot_hold_more_than_200_open_questions`, `Asking_and_withdrawing_in_a_loop_does_not_grow_without_bound` |
+| Q5 | A question's text runs something on the admin's desktop | The desk companion passes every argument to `notify-send` as an argument, never through a shell, ends the options before the title, and escapes markup in the text. A click can only send one of the question's own choice ids | `DeskLoopTests.The_notification_escapes_markup_and_passes_choices_as_actions` |
+| Q6 | A stale notification answers something that is no longer asked | A question that closes anywhere is taken off the desk. A click that arrives late gets `already_closed` and changes nothing | `DeskLoopTests.A_question_answered_elsewhere_closes_its_notification`, `A_click_after_the_question_closed_does_no_harm`, `QuestionServiceTests.Withdraw_closes_it_and_only_for_its_asker` |
+| Q7 | A question leaks a secret or a path to a screen, or later to Huginn | Askers are told to put no secrets and no file paths in a question (design §9.2). Sleipnir's question names the person, the file name and the site only. Bifröst cannot check the text of other extensions | Sleipnir `PendingTests.The_question_text_has_no_path` |
 
 Accepted for now: any program running as the admin account is the admin. The system password
 prompt for host-only actions (design §5) comes with the first such action (ADR 002).

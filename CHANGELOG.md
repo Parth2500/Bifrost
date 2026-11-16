@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Added: asking the admin (step 2d)
+
+- **Questions.** Bifröst or an extension asks the admin a question with 2 to 4 choices and an
+  expiry. It reaches every place the admin is at once, and the first answer wins. A later answer
+  gets `409 already_closed`. Every answer is in the audit log. Questions are kept in memory and do
+  not survive a restart; extensions ask again.
+- **For extensions:** `POST /v1/questions`, `GET /v1/questions/<id>?wait=<s>` and
+  `DELETE /v1/questions/<id>` on the extension API socket.
+- **For admins:** `GET /api/v1/questions` (long-poll with `?after=<seq>&wait=<s>`) and
+  `POST /api/v1/questions/<id>/answer`, on the loopback API and the admin socket.
+- **`bifrost desk`** shows each open question as a desktop notification with a button per choice,
+  and takes it down when it is answered elsewhere. `bifrost desk install` runs it in your desktop
+  session. It needs `notify-send` 0.8 or later.
+- Sleipnir uses this for pending downloads: by default a member's download waits for the admin.
+
 ### Changed: the host admin is the OS account, not a token file (step 2c)
 
 - **Breaking: `admin.token` is gone.** The host admin reaches Bifröst on the admin socket,

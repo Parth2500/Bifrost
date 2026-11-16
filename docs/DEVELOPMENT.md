@@ -47,6 +47,29 @@ program to `/opt/bifrost`, writes `/etc/bifrost/admin.json` and the unit, and st
 installing a newer version, run `sudo systemctl restart bifrost`. The reasons are in
 [ADR 002](decisions/002-system-service-and-admin-socket.md).
 
+## Asking the admin
+
+An extension asks on its API socket (`POST /v1/questions`), waits with `GET /v1/questions/<id>?wait=30`
+and can take the question back with `DELETE`. Admins see open questions at `GET /api/v1/questions`
+(long-poll with `?after=<seq>&wait=30`) and answer with `POST /api/v1/questions/<id>/answer`, on the
+loopback API or the admin socket. Questions live in memory and are gone after a restart.
+
+```sh
+bifrost desk            # show questions as desktop notifications, until Ctrl+C
+bifrost desk install    # run it in your desktop session from now on (no sudo)
+```
+
+The desk companion needs `notify-send` (libnotify 0.8 or later) and `gdbus`. It looks for the
+service's socket, `/run/bifrost-admin/admin.sock`, then for a daemon you run by hand. Set
+`BIFROST_ADMIN_SOCKET` to point it somewhere else. To try it without an extension:
+
+```sh
+S="$XDG_RUNTIME_DIR/bifrost-admin/admin.sock"
+curl --unix-socket "$S" http://localhost/api/v1/questions
+curl --unix-socket "$S" -H 'Content-Type: application/json' -d '{"choice":"approve"}' \
+     http://localhost/api/v1/questions/<id>/answer
+```
+
 ## Extensions
 
 Until extensions install from releases (step 5), `extensions.json` in the settings folder says which
@@ -78,7 +101,7 @@ dotnet ef migrations add <Name> -p src/Bifrost.Server -o Persistence/Migrations
 | Project | Holds |
 |---|---|
 | `Bifrost.Core` | API types and enums. Framework references only, so the client app can share it |
-| `Bifrost.Server` | People, the store, security, the host, and the extension supervisor and proxy |
-| `Bifrost.App` | The `bifrost` command: `daemon` and `service` |
+| `Bifrost.Server` | People, the store, security, the host, the extension supervisor and proxy, and questions |
+| `Bifrost.App` | The `bifrost` command: `daemon`, `service` and `desk` |
 | `Bifrost.Tests` | xUnit, `FakeTimeProvider`, CsCheck |
 | `Bifrost.FakeExtension` | The extension the tests run |
