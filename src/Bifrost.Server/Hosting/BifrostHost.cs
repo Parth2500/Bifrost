@@ -273,7 +273,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
             return;
         }
 
-        var source = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var source = LimiterKey(context.Connection.RemoteIpAddress);
         if (_limiter.IsBlocked(source))
         {
             await Problem.WriteAsync(context, 429, "too_many_attempts", "Too many failed attempts. Try again later.");
@@ -303,6 +303,17 @@ public sealed partial class BifrostHost : IAsyncDisposable
         }
         context.SetPrincipal(principal);
         await next();
+    }
+
+    /// <summary>IPv4-mapped addresses count as IPv4, and an IPv6 host gets its whole /64, so one machine cannot mint sources.</summary>
+    private static string LimiterKey(IPAddress? address)
+    {
+        if (address is null) return "unknown";
+        if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();
+        if (address.AddressFamily != AddressFamily.InterNetworkV6) return address.ToString();
+        var bytes = address.GetAddressBytes();
+        Array.Clear(bytes, 8, 8);
+        return new IPAddress(bytes).ToString() + "/64";
     }
 
     private sealed record AdminPeer(uint? Uid);

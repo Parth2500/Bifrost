@@ -18,10 +18,21 @@ public sealed class AuthFailureLimiter(int maxFailures, TimeSpan window, TimePro
     {
         lock (_gate)
         {
+            if (_failures.Count >= MaxSources) Sweep();
             var queue = Prune(source);
+            // shortcut: past the cap a new source is not tracked; the 20 failures/minute budget then
+            // cannot block it, but memory stays bounded. Upgrade with a global LAN failure budget.
+            if (queue is null && _failures.Count >= MaxSources) return;
             if (queue is null) _failures[source] = queue = new Queue<DateTimeOffset>();
             queue.Enqueue(time.GetUtcNow());
         }
+    }
+
+    private const int MaxSources = 10_000;
+
+    private void Sweep()
+    {
+        foreach (var source in _failures.Keys.ToList()) Prune(source);
     }
 
     private Queue<DateTimeOffset>? Prune(string source)
