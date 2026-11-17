@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added: the view-only browser fallback, `identity rotate`, the polkit prompt (step 3)
+
+- **Browser fallback.** `"fallbackPort": 7782` in `lan.json` opens a plain-HTTP listener, off by default.
+  A browser pairs by the compared code and gets a `browser-fallback` token. That token can only read
+  (GET/HEAD), on every listener. An app token is refused on the fallback port.
+- **`bifrost identity rotate`** asks the system password prompt (polkit), then has the daemon make a new
+  home key over the admin socket. Restart to use it; every device pairs again. `service install` writes
+  the polkit policy; `service uninstall` removes it.
+- Starting join requests is limited to 10 a minute per source.
+
 ### Added: pairing by a compared 8-digit code (step 3)
 
 - A device with no camera: `POST /api/v1/join {name, platform, commit}` (commit = SHA-256 of its nonce)

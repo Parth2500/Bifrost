@@ -32,7 +32,8 @@ internal sealed class JoinEndpoints(JoinService? join, PeopleService people)
             return Problem.Create(400, "invalid_request", "A device name and a commitment (SHA-256 of the nonce, as 64 hex characters) are required.");
         }
         if (join!.Start(body.Name.Trim(), body.Platform ?? "unknown", Convert.FromHexString(body.Commit),
-                Bifrost.Server.Hosting.BifrostHost.LimiterKey(context.Connection.RemoteIpAddress)) is not { } started)
+                Bifrost.Server.Hosting.BifrostHost.LimiterKey(context.Connection.RemoteIpAddress),
+                browser: Bifrost.Server.Hosting.BifrostHost.IsFallback(context)) is not { } started)
         {
             return Problem.Create(429, "too_many_requests", "A join request from this address, or too many overall, is already waiting.");
         }

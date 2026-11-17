@@ -120,6 +120,7 @@ public sealed class ServiceCommandTests : IDisposable
         Assert.Equal(("<program>", (UnixFileMode)0b111_101_101), _files.Files["/opt/bifrost/bifrost"]);
         Assert.Equal("<sqlite>", _files.Files["/opt/bifrost/libe_sqlite3.so"].Content);
         Assert.Equal((SystemUnit.Render("/opt/bifrost/bifrost"), (UnixFileMode)0b110_100_100), _files.Files["/etc/systemd/system/bifrost.service"]);
+        Assert.Equal((HostGate.Policy, (UnixFileMode)0b110_100_100), _files.Files[HostGate.PolicyPath]);
         Assert.Equal(
             ["id -u bifrost", "chown bifrost:bifrost /etc/bifrost/admin.json", "systemctl daemon-reload", "systemctl enable --now bifrost.service"],
             _runner.Calls);
@@ -244,7 +245,7 @@ public sealed class ServiceCommandTests : IDisposable
 
         Assert.Equal(0, code);
         Assert.Equal(["systemctl disable --now bifrost.service", "systemctl daemon-reload"], _runner.Calls);
-        Assert.Equal(["/etc/systemd/system/bifrost.service"], _files.Deleted);
+        Assert.Equal(["/etc/systemd/system/bifrost.service", HostGate.PolicyPath], _files.Deleted);
         Assert.True(_files.FileExists("/etc/bifrost/admin.json"));
         Assert.Contains("Kept: /var/lib/bifrost", _output.ToString(), StringComparison.Ordinal);
         Assert.Contains("--purge", _output.ToString(), StringComparison.Ordinal);
@@ -259,7 +260,7 @@ public sealed class ServiceCommandTests : IDisposable
         var code = await Command().RunAsync(["uninstall", "--purge"]);
 
         Assert.Equal(0, code);
-        Assert.Equal(["/etc/systemd/system/bifrost.service", "/opt/bifrost", "/var/lib/bifrost", "/etc/bifrost"], _files.Deleted);
+        Assert.Equal(["/etc/systemd/system/bifrost.service", HostGate.PolicyPath, "/opt/bifrost", "/var/lib/bifrost", "/etc/bifrost"], _files.Deleted);
         Assert.Equal(["systemctl disable --now bifrost.service", "systemctl daemon-reload", "userdel bifrost"], _runner.Calls);
         Assert.False(_files.FileExists("/opt/bifrost/bifrost"));
         Assert.False(_files.FileExists("/etc/bifrost/admin.json"));

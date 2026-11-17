@@ -89,9 +89,10 @@ internal static class DaemonCommand
         }
 
         // The home network is off until the admin asks: a lan.json with {"enabled": true, "port": 7781} in the settings folder.
-        using var homeKey = LanEnabled(paths.Settings, out var lanPort) ? HomeKey.LoadOrCreate(paths.Data) : null;
-        var lan = homeKey is null ? null : new LanOptions(homeKey.Certificate, lanPort);
-        await using var host = BifrostHost.Create(new BifrostHostOptions(Admin: new AdminSocketOptions(paths.AdminSocket, admin.Uid), Lan: lan), people, TimeProvider.System, extensions: extensions, questions: questions);
+        using var homeKey = LanEnabled(paths.Settings, out var lanPort, out var fallbackPort) ? HomeKey.LoadOrCreate(paths.Data) : null;
+        var lan = homeKey is null ? null : new LanOptions(homeKey.Certificate, lanPort, fallbackPort);
+        await using var host = BifrostHost.Create(new BifrostHostOptions(Admin: new AdminSocketOptions(paths.AdminSocket, admin.Uid), Lan: lan,
+            RotateHomeKey: () => { using var fresh = HomeKey.Rotate(paths.Data); return fresh.Fingerprint; }), people, TimeProvider.System, extensions: extensions, questions: questions);
         await host.StartAsync();
         try
         {
@@ -120,13 +121,16 @@ internal static class DaemonCommand
         return 0;
     }
 
-    private static bool LanEnabled(string settings, out int port)
+    private static bool LanEnabled(string settings, out int port, out int? fallbackPort)
     {
         port = LanOptions.DefaultPort;
+        fallbackPort = null;
         var path = Path.Combine(settings, "lan.json");
         if (!File.Exists(path)) return false;
         using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
         if (json.RootElement.TryGetProperty("port", out var p) && p.TryGetInt32(out var n) && n is > 0 and < 65536) port = n;
+        // "fallbackPort": 7782 turns on the plain-HTTP, view-only browser fallback (design §6.1); off otherwise.
+        if (json.RootElement.TryGetProperty("fallbackPort", out var f) && f.TryGetInt32(out var fp) && fp is > 0 and < 65536) fallbackPort = fp;
         return json.RootElement.TryGetProperty("enabled", out var e) && e.ValueKind == System.Text.Json.JsonValueKind.True;
     }
 

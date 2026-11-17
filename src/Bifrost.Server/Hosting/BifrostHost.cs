@@ -22,6 +22,7 @@ namespace Bifrost.Server.Hosting;
 public sealed partial class BifrostHost : IAsyncDisposable
 {
     private const int PortAttempts = 20;
+    private const string FallbackKey = "bifrost.fallback";
     private const string AdminPeerKey = "bifrost.admin-peer";
     private const UnixFileMode AdminFolderMode = (UnixFileMode)0b111_101_101; // 0755: other accounts must reach the socket
     private const UnixFileMode AdminSocketMode = (UnixFileMode)0b110_110_110; // 0666: connecting needs write; the peer check decides
@@ -35,6 +36,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
     private readonly PairingService _pairing;
     private JoinService? _join;
     private readonly AuthFailureLimiter _limiter;
+    private readonly AuthFailureLimiter _joinLimiter;
     private readonly TimeProvider _time;
     private readonly TaskCompletionSource _shutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private WebApplication? _app;
@@ -50,6 +52,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
         _people = people;
         _extraLogs = extraLogs;
         _limiter = new AuthFailureLimiter(maxFailures: 20, window: TimeSpan.FromMinutes(1), time);
+        _joinLimiter = new AuthFailureLimiter(maxFailures: 10, window: TimeSpan.FromMinutes(1), time);
     }
 
     public int Port { get; private set; }
@@ -160,7 +163,18 @@ public sealed partial class BifrostHost : IAsyncDisposable
             kestrel.Limits.MaxRequestBodySize = 1024 * 1024;
             kestrel.Listen(IPAddress.Loopback, port);
             if (withIPv6) kestrel.Listen(IPAddress.IPv6Loopback, port);
-            if (_options.Lan is { } lan) kestrel.Listen(IPAddress.IPv6Any, lan.Port, listen => listen.UseHttps(lan.Certificate)); // dual-stack
+            if (_options.Lan is { } lan)
+            {
+                kestrel.Listen(IPAddress.IPv6Any, lan.Port, listen => listen.UseHttps(lan.Certificate)); // dual-stack
+                if (lan.FallbackPort is { } plain)
+                {
+                    kestrel.Listen(IPAddress.IPv6Any, plain, listen => listen.Use(next => connection =>
+                    {
+                        connection.Items[FallbackKey] = true; // tagged per connection: this listener is plain HTTP and view-only
+                        return next(connection);
+                    }));
+                }
+            }
             if (_options.Admin is { } admin)
             {
                 var folder = Path.GetDirectoryName(admin.Path)!;
@@ -196,6 +210,13 @@ public sealed partial class BifrostHost : IAsyncDisposable
         new DeviceEndpoints(_people).Map(api);
         _join = _options.Lan is { } lanJoin ? new JoinService(_people, System.Security.Cryptography.SHA256.HashData(lanJoin.Certificate.PublicKey.ExportSubjectPublicKeyInfo()), _time) : null;
         new JoinEndpoints(_join, _people).Map(api);
+        if (_options.RotateHomeKey is { } rotate)
+        {
+            // Host only: the admin socket, never the network, and never a token.
+            api.MapPost("/identity/rotate", (HttpContext c) => c.Principal().IsLocal
+                ? Results.Ok(new { fingerprint = rotate() })
+                : Problem.Create(403, "host_only", "Only this computer's admin can rotate the home key."));
+        }
         new PairingEndpoints(_pairing, _people, _options.Lan is { } l ? HomeKey.FingerprintOf(l.Certificate) : null, _options.Lan?.Port).Map(api);
         ExtensionEndpoints.Map(api, _extensions);
         if (_questions is not null) QuestionEndpoints.MapForAdmins(api, _questions);
@@ -256,10 +277,21 @@ public sealed partial class BifrostHost : IAsyncDisposable
         }
 
         var isPublic = HttpMethods.IsGet(context.Request.Method) && context.Request.Path == "/api/v1/server";
+        var fallback = IsFallback(context);
         if (HttpMethods.IsPost(context.Request.Method)
             && (context.Request.Path == PairingEndpoints.PairPath || context.Request.Path.StartsWithSegments(JoinEndpoints.PublicPrefix)))
         {
             var asker = LimiterKey(context.Connection.RemoteIpAddress);
+            if (context.Request.Path == JoinEndpoints.PublicPrefix)
+            {
+                // Starting a request is not a failure, but a flood of them would hold the waiting places.
+                if (_joinLimiter.IsBlocked(asker))
+                {
+                    await Problem.WriteAsync(context, 429, "too_many_attempts", "Too many join requests. Try again later.");
+                    return;
+                }
+                _joinLimiter.RecordFailure(asker);
+            }
             if (_limiter.IsBlocked(asker))
             {
                 await Problem.WriteAsync(context, 429, "too_many_attempts", "Too many failed attempts. Try again later.");
@@ -289,6 +321,16 @@ public sealed partial class BifrostHost : IAsyncDisposable
         // only needs to slow down wrong guesses, and must never lock the owner out.
         if (await _people.AuthenticateAsync(presented) is { } principal)
         {
+            // The fallback is plain HTTP: only a browser-fallback token may travel it, and nobody it
+            // identifies may change anything, on any listener (design §7.3).
+            var viewOnly = principal.Kind == Bifrost.Core.Models.DeviceKind.BrowserFallback;
+            if ((fallback && !viewOnly) || (viewOnly && !HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method)))
+            {
+                await Problem.WriteAsync(context, 403, "view_only", fallback && !viewOnly
+                    ? "This listener is not encrypted: pair this device through the app."
+                    : "A browser paired through the fallback can only look.");
+                return;
+            }
             context.SetPrincipal(principal);
             await next();
             return;
@@ -327,6 +369,9 @@ public sealed partial class BifrostHost : IAsyncDisposable
     }
 
     /// <summary>IPv4-mapped addresses count as IPv4, and an IPv6 host gets its whole /64, so one machine cannot mint sources.</summary>
+    internal static bool IsFallback(HttpContext context) =>
+        context.Features.Get<IConnectionItemsFeature>()?.Items.ContainsKey(FallbackKey) == true;
+
     internal static string LimiterKey(IPAddress? address)
     {
         if (address is null) return "unknown";

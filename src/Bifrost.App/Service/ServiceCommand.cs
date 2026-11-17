@@ -67,6 +67,10 @@ public sealed class ServiceCommand(
         fs.WriteFile(AdminFile, JsonSerializer.Serialize(new { uid, name }) + "\n", Mode600);
         if (!await Run("chown", $"{SystemUnit.Account}:{SystemUnit.Account}", AdminFile)) return 1;
 
+        Say($"write {HostGate.PolicyPath}");
+        fs.CreateDirectory(Path.GetDirectoryName(HostGate.PolicyPath)!, Mode755);
+        fs.WriteFile(HostGate.PolicyPath, HostGate.Policy, Mode644);
+
         Say($"write {UnitPath}");
         fs.WriteFile(UnitPath, SystemUnit.Render(Binary), Mode644);
         if (!await Run("systemctl", "daemon-reload")) return 1;
@@ -120,6 +124,7 @@ public sealed class ServiceCommand(
         await Run("systemctl", "disable", "--now", SystemUnit.Name); // not installed is fine
         Say($"remove {UnitPath}");
         fs.Delete(UnitPath);
+        fs.Delete(HostGate.PolicyPath);
         await Run("systemctl", "daemon-reload");
 
         if (purge)

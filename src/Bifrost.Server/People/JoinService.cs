@@ -21,9 +21,10 @@ public sealed class JoinService(PeopleService people, byte[] fingerprint, TimePr
 
     public sealed record Request(Guid Id, string Name, string Platform, string Code, DateTimeOffset Expires);
 
-    private sealed class Entry(string name, string platform, DateTimeOffset expires, byte[] commit, string serverNonce, string source)
+    private sealed class Entry(string name, string platform, DateTimeOffset expires, byte[] commit, string serverNonce, string source, bool browser)
     {
         public string Source { get; } = source;
+        public bool Browser { get; } = browser;
         public string Name { get; } = name;
         public string Platform { get; } = platform;
         public DateTimeOffset Expires { get; set; } = expires;
@@ -38,7 +39,7 @@ public sealed class JoinService(PeopleService people, byte[] fingerprint, TimePr
     private readonly Lock _gate = new();
 
     /// <returns>The request and the server's nonce; null when 5 requests already wait.</returns>
-    public (Guid Id, string ServerNonce)? Start(string name, string platform, byte[] commit, string source)
+    public (Guid Id, string ServerNonce)? Start(string name, string platform, byte[] commit, string source, bool browser = false)
     {
         var serverNonce = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
         var id = Guid.NewGuid();
@@ -47,7 +48,7 @@ public sealed class JoinService(PeopleService people, byte[] fingerprint, TimePr
             Purge();
             // One waiting request per source, so one machine cannot fill the five places.
             if (_entries.Count >= MaxPending || _entries.Values.Any(e => e.Source == source)) return null;
-            _entries[id] = new Entry(name, platform, time.GetUtcNow() + RevealWithin, commit, serverNonce, source);
+            _entries[id] = new Entry(name, platform, time.GetUtcNow() + RevealWithin, commit, serverNonce, source, browser);
         }
         return (id, serverNonce);
     }
@@ -120,7 +121,7 @@ public sealed class JoinService(PeopleService people, byte[] fingerprint, TimePr
             if (entry.PersonId is null) return (Outcome.Waiting, null);
             _entries.Remove(id);
         }
-        var device = await people.IssueDeviceAsync(entry.PersonId.Value, entry.Name, entry.Platform, DeviceKind.App);
+        var device = await people.IssueDeviceAsync(entry.PersonId.Value, entry.Name, entry.Platform, entry.Browser ? DeviceKind.BrowserFallback : DeviceKind.App);
         return (Outcome.Approved, device);
     }
 

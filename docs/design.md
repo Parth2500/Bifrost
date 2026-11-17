@@ -499,7 +499,12 @@ Each step ends with working, tested software.
    routes to it with identity headers. The loopback listener only. The desk companion and "ask the
    admin" on the host screen come here. **Built** (2026-11-16), and installed on a real machine. An
    extension under the service and a click on a real notification are still to be checked by hand.
-3. **LAN.** Home key, HTTPS listener, pinning, pairing paths A and B, mDNS.
+3. **LAN.** Home key, HTTPS listener, pinning, pairing paths A and B, mDNS. **Mostly built**
+   (2026-11-17), tested over loopback only: home key and HTTPS listener (off until `lan.json`),
+   pairing A (invitation link) and B (compared 8-digit code, commit then reveal), the view-only browser
+   fallback (plain HTTP, own port, off), `bifrost identity rotate` behind the polkit prompt. **Left:**
+   mDNS discovery; the QR image (a screen draws it); the audit log for path B; a real device on a real
+   network; the pinning client, which is step 4.
 4. **Client app, first cut.** Pair, pin, show Sleipnir's screens. Run the web view pinning test here.
 5. **Install and update.** Signed releases, rollback, install from file.
 6. **Folders and events.** Per-person folders, visibility, publish and subscribe. Saga, when it
