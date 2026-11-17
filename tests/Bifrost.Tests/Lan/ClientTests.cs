@@ -56,13 +56,17 @@ public class ClientTests
         Assert.Equal(home.Admin.PersonId, (await client.GetMeAsync())!.PersonId);
         Assert.Empty((await client.GetExtensionsAsync())!);
         Assert.Equal($"https://127.0.0.1:{port}/x/sleipnir/", client.ExtensionAddress("sleipnir").ToString());
-        using var missing = await client.GetFromExtensionAsync("sleipnir", "/index.html");
+        using var missing = await client.GetFromExtensionAsync("sleipnir", "index.html");
         foreach (var bad in new[] { "http://evil.example/", "https://evil.example/", "../../api/v1/people", "%2e%2e/%2e%2e/api/v1/people", "a/%2E%2E/%2E%2E/b", "./x", "..\\x" })
         {
             await Assert.ThrowsAsync<ArgumentException>(() => client.GetFromExtensionAsync("sleipnir", bad)); // the token goes nowhere else
         }
         await Assert.ThrowsAsync<ArgumentException>(() => client.GetHomeAsync("sleipnir", new Uri($"https://127.0.0.1:{port}/x/saga/"))); // a sibling extension
         await Assert.ThrowsAsync<ArgumentException>(() => client.GetHomeAsync("sleipnir", new Uri($"https://127.0.0.1:{port}/api/v1/people")));
+        await Assert.ThrowsAsync<ArgumentException>(() => client.GetFromExtensionAsync("sleipnir", "/index.html")); // from the home's root: outside the extension
+        await Assert.ThrowsAsync<ArgumentException>(() => client.GetFromExtensionAsync("sleipnir", "//evil.example/x"));
+        Assert.Equal(HttpStatusCode.OK, (await client.GetHomeAsync(Area.HomePages, new Uri($"https://127.0.0.1:{port}/api/v1/me"))).StatusCode); // the home pages may call the API
+        await Assert.ThrowsAsync<ArgumentException>(() => client.GetHomeAsync(Area.HomePages, new Uri($"https://127.0.0.1:{port}/x/sleipnir/")));
         await Assert.ThrowsAsync<ArgumentException>(() => client.SendToExtensionAsync("sleipnir", "PUT", "x", null));
         await Assert.ThrowsAsync<ArgumentException>(() => client.SendToExtensionAsync("sleipnir", "POST", "http://evil.example/", "{}"));
         await Assert.ThrowsAsync<ArgumentException>(() => client.SendToExtensionAsync("sleipnir", "POST", "%2e%2e/api/v1/people", "{}"));

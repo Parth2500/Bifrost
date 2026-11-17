@@ -235,6 +235,8 @@ public sealed partial class BifrostHost : IAsyncDisposable
         ExtensionEndpoints.Map(api, _extensions);
         if (_questions is not null) QuestionEndpoints.MapForAdmins(api, _questions);
         new ExtensionProxy(_extensions, app.Services.GetRequiredService<Yarp.ReverseProxy.Forwarder.IHttpForwarder>()).Map(app);
+        // The page holds no data of its own, so it needs no token; what it shows comes from the API with one.
+        app.MapGet(HomePage.Path, () => Results.Content(HomePage.Html, "text/html; charset=utf-8"));
         app.MapFallback("/api/{**rest}", () => Problem.Create(404, "not_found", "No such endpoint."));
         return app;
     }

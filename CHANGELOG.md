@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added: Bifröst's own page, and areas in the client (step 4)
+
+- **`/ui/`** is a first plain page: devices with who is online (seen in the last 3 minutes), sign out a
+  device, the people, the extensions, and open questions with their answer buttons. A member sees only
+  their own device; the people and extensions are left out for them. It is only the page: its data comes
+  from the API with the device's token.
+- **`Area`** in `Bifrost.Client` says which part of the home a web view may reach: an extension's folder, or
+  the home pages (`/ui/` and the API they call). The Android app has a Home and a Downloads button; each
+  has its own web view limited to its area. A path starting with `/` is now from the home's root, and
+  outside the area it is refused.
+
 - **Decision, from a real phone:** the Android web view cannot carry a WebSocket to a self-signed home, so
   extension screens use server-sent events for live updates. `FAKE_MODE=page` in the fake extension
   serves a page that tests this (script, style, image, fetch, off-site block, WebSocket, events).

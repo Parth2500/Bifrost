@@ -16,7 +16,7 @@ namespace Bifrost.Android;
 public sealed class MainActivity : Activity
 {
     private const string Store = "home";
-    private const string Extension = "sleipnir";
+    private static readonly Area Downloads = Area.Extension("sleipnir");
     private BifrostClient? _client;
 
     protected override void OnCreate(Bundle? savedInstanceState)
@@ -86,20 +86,33 @@ public sealed class MainActivity : Activity
     {
         _client?.Dispose();
         _client = new BifrostClient(home);
+        ShowArea(Area.HomePages);
+    }
+
+    /// <summary>One web view per area, each allowed to reach that area only; the buttons above switch between them.</summary>
+    private void ShowArea(Area area)
+    {
+        var client = _client!;
         var web = new WebView(this);
         web.Settings.JavaScriptEnabled = true;
         web.Settings.AllowFileAccess = false;
         web.Settings.AllowContentAccess = false;
         // A service worker would fetch outside this app's client; none is allowed to.
         ServiceWorkerController.Instance.SetServiceWorkerClient(new RefusingWorkerClient());
-        web.SetWebViewClient(new PinnedClient(_client, Extension));
-        web.AddJavascriptInterface(new Bridge(_client, Extension), "bifrost"); // only home pages ever load here
+        web.SetWebViewClient(new PinnedClient(client, area));
+        web.AddJavascriptInterface(new Bridge(client, area), "bifrost"); // only this area's pages ever load here
+
+        Button Tab(string label, Area target) { var b = new Button(this) { Text = label }; b.Click += (_, _) => ShowArea(target); return b; }
+        var tabs = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+        tabs.AddView(Tab("Home", Area.HomePages), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+        tabs.AddView(Tab("Downloads", Downloads), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+        var column = new LinearLayout(this) { Orientation = Orientation.Vertical };
         // Newer Android draws behind the status and title bars; leave room for them.
-        var frame = new FrameLayout(this);
-        frame.SetPadding(0, BarsHeight(), 0, 0);
-        frame.AddView(web);
-        SetContentView(frame);
-        web.LoadUrl(_client.ExtensionAddress(Extension).ToString());
+        column.SetPadding(0, BarsHeight(), 0, 0);
+        column.AddView(tabs);
+        column.AddView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f));
+        SetContentView(column);
+        web.LoadUrl(client.AddressOf(area).ToString());
     }
 
     private int BarsHeight()
@@ -124,7 +137,7 @@ public sealed class MainActivity : Activity
         .PutString("address", h.Address)!.PutString("fp", h.Fingerprint)!.PutString("token", h.Token)!.PutString("device", h.DeviceId.ToString())!.Apply();
 
     /// <summary>What a page uses to send a request with a body, since the web view hands the app only GETs.</summary>
-    private sealed class Bridge(BifrostClient client, string extension) : Java.Lang.Object
+    private sealed class Bridge(BifrostClient client, Area area) : Java.Lang.Object
     {
         [JavascriptInterface]
         [Java.Interop.Export("send")]
@@ -132,7 +145,7 @@ public sealed class MainActivity : Activity
         {
             try
             {
-                var (status, text) = client.SendToExtensionAsync(extension, method, path, body).GetAwaiter().GetResult();
+                var (status, text) = client.SendAsync(area, method, path, body).GetAwaiter().GetResult();
                 return System.Text.Json.JsonSerializer.Serialize(new { status, body = text });
             }
             catch (Exception e) when (e is ArgumentException or HttpRequestException)
@@ -147,7 +160,7 @@ public sealed class MainActivity : Activity
         public override WebResourceResponse? ShouldInterceptRequest(IWebResourceRequest? request) => PinnedClient.Refused();
     }
 
-    private sealed class PinnedClient(BifrostClient client, string extension) : WebViewClient
+    private sealed class PinnedClient(BifrostClient client, Area area) : WebViewClient
     {
         // What a page may load and send: only itself. Scripts from elsewhere would be refused above anyway;
         // this closes fetch, forms, frames and images to other hosts in the page's own eyes too.
@@ -159,15 +172,15 @@ public sealed class MainActivity : Activity
         // A script cannot send the person to another site from inside this app.
         public override bool ShouldOverrideUrlLoading(WebView? view, IWebResourceRequest? request) =>
             !(Uri.TryCreate(request?.Url?.ToString(), UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps
-              && u.Authority == client.ExtensionAddress(extension).Authority
-              && u.AbsolutePath.StartsWith(client.ExtensionAddress(extension).AbsolutePath, StringComparison.Ordinal));
+              && u.Authority == client.AddressOf(area).Authority
+              && u.AbsolutePath.StartsWith(area.Root, StringComparison.Ordinal));
 
         public override WebResourceResponse? ShouldInterceptRequest(WebView? view, IWebResourceRequest? request)
         {
             if (request?.Url?.ToString() is not { } url || !Uri.TryCreate(url, UriKind.Absolute, out var address)) return Refused();
             try
             {
-                var response = client.GetHomeAsync(extension, address, request.RequestHeaders?.ToDictionary(h => h.Key, h => h.Value)).GetAwaiter().GetResult();
+                var response = client.GetHomeAsync(area, address, request.RequestHeaders?.ToDictionary(h => h.Key, h => h.Value)).GetAwaiter().GetResult();
                 var type = response.Content.Headers.ContentType;
                 return new WebResourceResponse(type?.MediaType ?? "application/octet-stream", type?.CharSet ?? "utf-8", (int)response.StatusCode,
                     response.ReasonPhrase ?? "OK", new Dictionary<string, string>(PageRules), response.Content.ReadAsStream());
