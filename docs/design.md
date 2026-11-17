@@ -502,8 +502,9 @@ Each step ends with working, tested software.
 3. **LAN.** Home key, HTTPS listener, pinning, pairing paths A and B, mDNS. **Mostly built**
    (2026-11-17), tested over loopback only: home key and HTTPS listener (off until `lan.json`),
    pairing A (invitation link) and B (compared 8-digit code, commit then reveal), the view-only browser
-   fallback (plain HTTP, own port, off), `bifrost identity rotate` behind the polkit prompt. **Left:**
-   mDNS discovery; the QR image (a screen draws it); the audit log for path B; a real device on a real
+   fallback (plain HTTP, own port, off), `bifrost identity rotate` behind the polkit prompt, and mDNS
+   announcement through Avahi (checked on a real network). **Left:** browsing from a client (Android has
+   its own); the QR image (a screen draws it); the audit log for path B; a real device on a real
    network; the pinning client, which is step 4.
 4. **Client app, first cut.** Pair, pin, show Sleipnir's screens. Run the web view pinning test here.
    **Started** (2026-11-17): the shared .NET client library `Bifrost.Client` (parse the invitation link,

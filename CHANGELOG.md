@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added: mDNS announcement (step 3)
+
+- While the home network listener is on, Bifröst announces `_bifrost._tcp` through Avahi
+  (`avahi-publish`), with TXT `name`, `api=v1`, `port` and `fp` (the first 16 characters of the
+  fingerprint). It stops with the daemon. Without Avahi it logs one warning and carries on.
+
 ### Added: the shared client library (step 4, first part)
 
 - **`Bifrost.Client`**: `PairingLink.Parse`, `BifrostPairing.PairWithLinkAsync` (the secret goes only to

@@ -101,6 +101,8 @@ internal static class DaemonCommand
             await extensions.StartAllAsync();
             DaemonInfo.Write(paths.Runtime, new DaemonInfo(host.Port, Environment.ProcessId, Version));
             Console.WriteLine($"Bifröst listening on http://127.0.0.1:{host.Port} and, for {admin.Name}, on {paths.AdminSocket}");
+            using var announcer = homeKey is null ? null : new MdnsAnnouncer(Environment.MachineName, lanPort, homeKey.Fingerprint, logFactory.CreateLogger("Bifrost.Mdns"));
+            announcer?.Start();
             if (homeKey is not null) Console.WriteLine($"Home network: https://0.0.0.0:{lanPort}, home key {homeKey.Fingerprint}");
             try
             {

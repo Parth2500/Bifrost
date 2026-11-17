@@ -53,4 +53,12 @@ public class HomeKeyTests
         using var refused = await client.SendAsync(foreign);
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
     }
+
+    [Fact]
+    public void The_announcement_carries_the_name_version_port_and_a_short_fingerprint_and_nothing_else()
+    {
+        var arguments = Bifrost.App.MdnsAnnouncer.Arguments("Home", 7781, new string('a', 64));
+
+        Assert.Equal(["--service", "Home", "_bifrost._tcp", "7781", "name=Home", "api=v1", "port=7781", "fp=aaaaaaaaaaaaaaaa"], arguments);
+    }
 }
