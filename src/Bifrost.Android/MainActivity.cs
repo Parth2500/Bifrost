@@ -93,6 +93,7 @@ public sealed class MainActivity : Activity
         // A service worker would fetch outside this app's client; none is allowed to.
         ServiceWorkerController.Instance.SetServiceWorkerClient(new RefusingWorkerClient());
         web.SetWebViewClient(new PinnedClient(_client, Extension));
+        web.AddJavascriptInterface(new Bridge(_client, Extension), "bifrost"); // only home pages ever load here
         // Newer Android draws behind the status and title bars; leave room for them.
         var frame = new FrameLayout(this);
         frame.SetPadding(0, BarsHeight(), 0, 0);
@@ -121,6 +122,25 @@ public sealed class MainActivity : Activity
 
     private void Save(PairedHome h) => GetSharedPreferences(Store, FileCreationMode.Private)!.Edit()!
         .PutString("address", h.Address)!.PutString("fp", h.Fingerprint)!.PutString("token", h.Token)!.PutString("device", h.DeviceId.ToString())!.Apply();
+
+    /// <summary>What a page uses to send a request with a body, since the web view hands the app only GETs.</summary>
+    private sealed class Bridge(BifrostClient client, string extension) : Java.Lang.Object
+    {
+        [JavascriptInterface]
+        [Java.Interop.Export("send")]
+        public string Send(string method, string path, string body)
+        {
+            try
+            {
+                var (status, text) = client.SendToExtensionAsync(extension, method, path, body).GetAwaiter().GetResult();
+                return System.Text.Json.JsonSerializer.Serialize(new { status, body = text });
+            }
+            catch (Exception e) when (e is ArgumentException or HttpRequestException)
+            {
+                return System.Text.Json.JsonSerializer.Serialize(new { status = 0, body = "" }); // refused before it was sent, or the home is out of reach
+            }
+        }
+    }
 
     private sealed class RefusingWorkerClient : ServiceWorkerClient
     {

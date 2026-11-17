@@ -46,7 +46,10 @@ public sealed partial class BifrostClient : IDisposable
 
     /// <summary>A request the device may send to an extension's screens, already pinned and signed in.</summary>
     /// <exception cref="ArgumentException"><paramref name="path"/> would leave the extension (another host, scheme or folder).</exception>
-    public Task<HttpResponseMessage> GetFromExtensionAsync(string name, string path, CancellationToken ct = default)
+    public Task<HttpResponseMessage> GetFromExtensionAsync(string name, string path, CancellationToken ct = default) =>
+        _http.GetAsync(Resolve(name, path), ct);
+
+    private Uri Resolve(string name, string path)
     {
         ArgumentNullException.ThrowIfNull(path);
         var root = ExtensionAddress(name);
@@ -63,7 +66,22 @@ public sealed partial class BifrostClient : IDisposable
         {
             throw new ArgumentException("The path leaves the extension.", nameof(path));
         }
-        return _http.GetAsync(target, ct);
+        return target;
+    }
+
+    /// <summary>
+    /// A request with a body for a page that cannot send one itself (a web view hands the app only GETs).
+    /// Only POST and DELETE, only inside the extension, a small JSON body at most.
+    /// </summary>
+    /// <exception cref="ArgumentException">A method or path that is not allowed.</exception>
+    public async Task<(int Status, string Body)> SendToExtensionAsync(string name, string method, string path, string? body, CancellationToken ct = default)
+    {
+        if (method is not ("POST" or "DELETE")) throw new ArgumentException("Only POST and DELETE.", nameof(method));
+        if (body is { Length: > 65536 }) throw new ArgumentException("The body is too large.", nameof(body));
+        using var request = new HttpRequestMessage(new HttpMethod(method), Resolve(name, path));
+        if (!string.IsNullOrEmpty(body)) request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+        using var response = await _http.SendAsync(request, ct);
+        return ((int)response.StatusCode, await response.Content.ReadAsStringAsync(ct));
     }
 
     /// <summary>
