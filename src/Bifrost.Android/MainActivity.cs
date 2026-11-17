@@ -89,6 +89,15 @@ public sealed class MainActivity : Activity
         ShowArea(Area.HomePages);
     }
 
+    /// <summary>Drops the pairing and goes back to the pairing screen: the person chose to, or the home refused our token.</summary>
+    private void ForgetHome()
+    {
+        GetSharedPreferences(Store, FileCreationMode.Private)!.Edit()!.Clear()!.Apply();
+        _client?.Dispose();
+        _client = null;
+        ShowPairing(null);
+    }
+
     /// <summary>One web view per area, each allowed to reach that area only; the buttons above switch between them.</summary>
     private void ShowArea(Area area)
     {
@@ -99,13 +108,18 @@ public sealed class MainActivity : Activity
         web.Settings.AllowContentAccess = false;
         // A service worker would fetch outside this app's client; none is allowed to.
         ServiceWorkerController.Instance.SetServiceWorkerClient(new RefusingWorkerClient());
-        web.SetWebViewClient(new PinnedClient(client, area));
-        web.AddJavascriptInterface(new Bridge(client, area), "bifrost"); // only this area's pages ever load here
+        web.SetWebViewClient(new PinnedClient(client, area, () => RunOnUiThread(ForgetHome)));
+        web.AddJavascriptInterface(new Bridge(client, area, () => RunOnUiThread(ForgetHome)), "bifrost"); // only this area's pages ever load here
 
         Button Tab(string label, Area target) { var b = new Button(this) { Text = label }; b.Click += (_, _) => ShowArea(target); return b; }
         var tabs = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         tabs.AddView(Tab("Home", Area.HomePages), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
         tabs.AddView(Tab("Downloads", Downloads), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+        var forget = new Button(this) { Text = "Forget" };
+        forget.Click += (_, _) => new AlertDialog.Builder(this)!
+            .SetTitle("Forget this home?")!.SetMessage("This device will need a new invitation to pair again.")!
+            .SetPositiveButton("Forget", (_, _) => ForgetHome())!.SetNegativeButton("Cancel", (_, _) => { })!.Show();
+        tabs.AddView(forget, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
         var column = new LinearLayout(this) { Orientation = Orientation.Vertical };
         // Newer Android draws behind the status and title bars; leave room for them.
         column.SetPadding(0, BarsHeight(), 0, 0);
@@ -137,7 +151,7 @@ public sealed class MainActivity : Activity
         .PutString("address", h.Address)!.PutString("fp", h.Fingerprint)!.PutString("token", h.Token)!.PutString("device", h.DeviceId.ToString())!.Apply();
 
     /// <summary>What a page uses to send a request with a body, since the web view hands the app only GETs.</summary>
-    private sealed class Bridge(BifrostClient client, Area area) : Java.Lang.Object
+    private sealed class Bridge(BifrostClient client, Area area, Action refused) : Java.Lang.Object
     {
         [JavascriptInterface]
         [Java.Interop.Export("send")]
@@ -146,6 +160,7 @@ public sealed class MainActivity : Activity
             try
             {
                 var (status, text) = client.SendAsync(area, method, path, body).GetAwaiter().GetResult();
+                if (status == 401) refused(); // the home no longer knows this device
                 return System.Text.Json.JsonSerializer.Serialize(new { status, body = text });
             }
             catch (Exception e) when (e is ArgumentException or HttpRequestException)
@@ -160,7 +175,7 @@ public sealed class MainActivity : Activity
         public override WebResourceResponse? ShouldInterceptRequest(IWebResourceRequest? request) => PinnedClient.Refused();
     }
 
-    private sealed class PinnedClient(BifrostClient client, Area area) : WebViewClient
+    private sealed class PinnedClient(BifrostClient client, Area area, Action refused) : WebViewClient
     {
         // What a page may load and send: only itself. Scripts from elsewhere would be refused above anyway;
         // this closes fetch, forms, frames and images to other hosts in the page's own eyes too.
@@ -181,6 +196,7 @@ public sealed class MainActivity : Activity
             try
             {
                 var response = client.GetHomeAsync(area, address, request.RequestHeaders?.ToDictionary(h => h.Key, h => h.Value)).GetAwaiter().GetResult();
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) refused(); // signed out on the home: pair again
                 var type = response.Content.Headers.ContentType;
                 return new WebResourceResponse(type?.MediaType ?? "application/octet-stream", type?.CharSet ?? "utf-8", (int)response.StatusCode,
                     response.ReasonPhrase ?? "OK", new Dictionary<string, string>(PageRules), response.Content.ReadAsStream());

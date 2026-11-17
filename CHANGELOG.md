@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Android:** when the home refuses the device's token (it was signed out, or the key changed) the app drops
+  the pairing and shows the pairing screen again. A **Forget** button does the same on purpose.
+
 ### Added: Bifröst's own page, and areas in the client (step 4)
 
 - **`/ui/`** is a first plain page: devices with who is online (seen in the last 3 minutes), sign out a
