@@ -209,13 +209,17 @@ public sealed partial class BifrostHost : IAsyncDisposable
         new PeopleEndpoints(_people).Map(api);
         new DeviceEndpoints(_people).Map(api);
         _join = _options.Lan is { } lanJoin ? new JoinService(_people, System.Security.Cryptography.SHA256.HashData(lanJoin.Certificate.PublicKey.ExportSubjectPublicKeyInfo()), _time) : null;
-        new JoinEndpoints(_join, _people).Map(api);
+        new JoinEndpoints(_join, _people, _joinLimiter).Map(api);
         if (_options.RotateHomeKey is { } rotate)
         {
             // Host only: the admin socket, never the network, and never a token.
-            api.MapPost("/identity/rotate", (HttpContext c) => c.Principal().IsLocal
-                ? Results.Ok(new { fingerprint = rotate() })
-                : Problem.Create(403, "host_only", "Only this computer's admin can rotate the home key."));
+            api.MapPost("/identity/rotate", async (HttpContext c) =>
+            {
+                if (!c.Principal().IsLocal) return Problem.Create(403, "host_only", "Only this computer's admin can rotate the home key.");
+                var fingerprint = rotate();
+                var revoked = await _people.RevokeAllRemoteAsync(c.Principal()); // open invitations die with the restart
+                return Results.Ok(new { fingerprint, revokedDevices = revoked });
+            });
         }
         new PairingEndpoints(_pairing, _people, _options.Lan is { } l ? HomeKey.FingerprintOf(l.Certificate) : null, _options.Lan?.Port).Map(api);
         ExtensionEndpoints.Map(api, _extensions);
@@ -282,15 +286,11 @@ public sealed partial class BifrostHost : IAsyncDisposable
             && (context.Request.Path == PairingEndpoints.PairPath || context.Request.Path.StartsWithSegments(JoinEndpoints.PublicPrefix)))
         {
             var asker = LimiterKey(context.Connection.RemoteIpAddress);
-            if (context.Request.Path == JoinEndpoints.PublicPrefix)
+            if (IsFallback(context) && context.Request.Path == PairingEndpoints.PairPath)
             {
-                // Starting a request is not a failure, but a flood of them would hold the waiting places.
-                if (_joinLimiter.IsBlocked(asker))
-                {
-                    await Problem.WriteAsync(context, 429, "too_many_attempts", "Too many join requests. Try again later.");
-                    return;
-                }
-                _joinLimiter.RecordFailure(asker);
+                // An invitation secret and an app token must not cross plain HTTP.
+                await Problem.WriteAsync(context, 403, "view_only", "This listener is not encrypted: pair through the app.");
+                return;
             }
             if (_limiter.IsBlocked(asker))
             {

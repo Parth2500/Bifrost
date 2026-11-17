@@ -8,7 +8,7 @@
   A browser pairs by the compared code and gets a `browser-fallback` token. That token can only read
   (GET/HEAD), on every listener. An app token is refused on the fallback port.
 - **`bifrost identity rotate`** asks the system password prompt (polkit), then has the daemon make a new
-  home key over the admin socket. Restart to use it; every device pairs again. `service install` writes
+  home key over the admin socket. Restart to use it; every device is signed out at once and pairs again. `service install` writes
   the polkit policy; `service uninstall` removes it.
 - Starting join requests is limited to 10 a minute per source.
 

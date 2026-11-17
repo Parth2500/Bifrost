@@ -104,6 +104,19 @@ public sealed class PeopleService(IDbContextFactory<BifrostDb> dbFactory, TimePr
         return new IssuedDevice(device, token);
     });
 
+    /// <summary>Every device but the host's own: a new home key means everyone pairs again.</summary>
+    public Task<int> RevokeAllRemoteAsync(Principal actor) => With(async db =>
+    {
+        var devices = await db.Devices.Where(d => !d.IsLocal && d.RevokedAt == null).ToListAsync();
+        foreach (var d in devices)
+        {
+            d.RevokedAt = Now;
+            Audit(db, actor, "device.revoked", d.Id, "home key rotated");
+        }
+        await db.SaveChangesAsync();
+        return devices.Count;
+    });
+
     public Task<bool> RevokeDeviceAsync(Principal actor, Guid deviceId) => With(async db =>
     {
         var device = await db.Devices.FirstOrDefaultAsync(d => d.Id == deviceId);

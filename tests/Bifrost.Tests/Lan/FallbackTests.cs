@@ -39,6 +39,9 @@ public class FallbackTests
         Assert.Equal(HttpStatusCode.OK, (await browser.GetAsync("/api/v1/me")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await browser.PostAsJsonAsync("/api/v1/invitations", new { personId = home.Admin.PersonId })).StatusCode);
 
+        using var pairOnPlain = await browser.PostAsJsonAsync("/api/v1/pair", new { secret = "x", name = "x", platform = "x" });
+        Assert.Equal(HttpStatusCode.Forbidden, pairOnPlain.StatusCode); // invitation secrets stay off plain HTTP
+
         using var app = new HttpClient { BaseAddress = browser.BaseAddress };
         app.DefaultRequestHeaders.Authorization = new("Bearer", home.Token); // an app token must never cross plain HTTP
         Assert.Equal(HttpStatusCode.Forbidden, (await app.GetAsync("/api/v1/me")).StatusCode);
@@ -53,7 +56,7 @@ public class FallbackTests
         var last = HttpStatusCode.OK;
         for (var i = 0; i < 12; i++)
         {
-            last = (await device.PostAsJsonAsync("/api/v1/join", new { name = "x", platform = "y", commit = Commit("n" + i) })).StatusCode;
+            last = (await device.PostAsJsonAsync(i % 2 == 0 ? "/api/v1/join" : "/api/v1/join/", new { name = "x", platform = "y", commit = Commit("n" + i) })).StatusCode;
         }
         Assert.Equal(HttpStatusCode.TooManyRequests, last);
     }

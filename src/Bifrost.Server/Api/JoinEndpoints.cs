@@ -3,7 +3,7 @@ using Bifrost.Server.People;
 namespace Bifrost.Server.Api;
 
 /// <summary>Pairing path B: a device asks to join, an admin compares the code and approves (design §7.2).</summary>
-internal sealed class JoinEndpoints(JoinService? join, PeopleService people)
+internal sealed class JoinEndpoints(JoinService? join, PeopleService people, Bifrost.Server.Security.AuthFailureLimiter startLimiter)
 {
     public const string PublicPrefix = "/api/v1/join";
 
@@ -26,6 +26,10 @@ internal sealed class JoinEndpoints(JoinService? join, PeopleService people)
     private IResult Start(HttpContext context, StartRequest body)
     {
         if (Off is { } off) return off;
+        // Counted here, in the handler, so every spelling of the route is counted (a flood would hold the waiting places).
+        var asker = Bifrost.Server.Hosting.BifrostHost.LimiterKey(context.Connection.RemoteIpAddress);
+        if (startLimiter.IsBlocked(asker)) return Problem.Create(429, "too_many_attempts", "Too many join requests. Try again later.");
+        startLimiter.RecordFailure(asker);
         if (string.IsNullOrWhiteSpace(body.Name) || body.Name.Length > 100 || (body.Platform?.Length ?? 0) > 50
             || body.Commit is not { Length: 64 } || !body.Commit.All(Uri.IsHexDigit))
         {

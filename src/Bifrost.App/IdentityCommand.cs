@@ -29,7 +29,7 @@ internal static class IdentityCommand
         }
         var body = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
         Console.WriteLine($"New home key {body.GetProperty("fingerprint").GetString()}.");
-        Console.WriteLine("Restart Bifröst to use it (sudo systemctl restart bifrost). Every device must pair again.");
+        Console.WriteLine("Restart Bifröst to use it (sudo systemctl restart bifrost). Every device was signed out and must pair again.");
         return 0;
     }
 }
