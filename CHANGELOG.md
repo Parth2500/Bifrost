@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added: `bifrost invite`, a home name, a LAN-wide failure budget (step 3)
+
+- **`bifrost invite [person]`** prints an invitation link and a QR code to scan with the app (the admin's
+  own person without a name). A link made over loopback now names this machine's address on the home
+  network, not `localhost`.
+- **`"name": "Our home"` in `lan.json`** is what links and the mDNS announcement call the home (the machine
+  name by default).
+- **One failure budget for the whole network:** 300 wrong tokens or secrets a minute across all sources, on
+  top of the per-source one, so a flood from many addresses slows down even when the per-source table is full.
+
 ### Added: the Android app, first cut (step 4)
 
 - `src/Bifrost.Android`: a thin .NET for Android shell, no MAUI. It pairs by invitation link (also from

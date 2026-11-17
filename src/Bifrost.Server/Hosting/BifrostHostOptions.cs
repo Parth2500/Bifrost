@@ -15,9 +15,12 @@ public sealed record BifrostHostOptions(int Port = BifrostHostOptions.DefaultPor
 public sealed record AdminSocketOptions(string Path, uint Uid);
 
 /// <param name="Certificate">The home key's certificate.</param>
+/// <param name="HomeName">What the home is called in links and on the network; the machine name when null.</param>
 /// <param name="FallbackPort">The plain-HTTP, view-only browser fallback (design §6.1); off when null.</param>
 /// <param name="Port">Fixed, so a pinned client can reconnect (design §6.1).</param>
-public sealed record LanOptions(System.Security.Cryptography.X509Certificates.X509Certificate2 Certificate, int Port = LanOptions.DefaultPort, int? FallbackPort = null)
+public sealed record LanOptions(System.Security.Cryptography.X509Certificates.X509Certificate2 Certificate, int Port = LanOptions.DefaultPort, int? FallbackPort = null, string? HomeName = null)
 {
     public const int DefaultPort = 7781;
+
+    public string Name => string.IsNullOrWhiteSpace(HomeName) ? Environment.MachineName : HomeName;
 }

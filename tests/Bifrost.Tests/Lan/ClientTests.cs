@@ -38,7 +38,10 @@ public class ClientTests
         await using var home = await HostFixture.StartAsync(lan: new LanOptions(key.Certificate, port));
         home.Http.DefaultRequestHeaders.Authorization = new("Bearer", home.Token);
         var invitation = await (await home.Http.PostAsJsonAsync("/api/v1/invitations", new { personId = home.Admin.PersonId })).Content.ReadFromJsonAsync<JsonElement>();
-        var link = PairingLink.Parse(invitation.GetProperty("link").GetString()!.Replace("localhost:" + port, "127.0.0.1:" + port));
+        var named = PairingLink.Parse(invitation.GetProperty("link").GetString()!);
+        Assert.DoesNotContain("localhost", named.Address); // a link made over loopback names this machine's LAN address, not "localhost"
+        Assert.EndsWith(":" + port, named.Address);
+        var link = named with { Address = "127.0.0.1:" + port }; // this test connects over loopback
 
         await Assert.ThrowsAsync<BifrostPairing.PairingRefusedException>(() =>
             BifrostPairing.PairWithLinkAsync(link with { Fingerprint = new string('0', 64) }, "x", "y")); // wrong key: the secret is never sent
@@ -87,5 +90,18 @@ public class ClientTests
 
         var paired = await joining.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(key.Fingerprint, paired.Fingerprint);
+    }
+}
+
+public class InviteTests
+{
+    [Fact]
+    public void The_qr_text_is_a_block_of_lines_and_the_same_link_makes_the_same_code()
+    {
+        var qr = Bifrost.App.InviteCommand.QrText("bifrost://pair?h=192.168.1.9%3A7781&fp=" + new string('a', 64) + "&t=abc&n=Home");
+
+        Assert.True(qr.Split('\n').Length > 25);
+        Assert.Contains("██", qr, StringComparison.Ordinal);
+        Assert.Equal(qr, Bifrost.App.InviteCommand.QrText("bifrost://pair?h=192.168.1.9%3A7781&fp=" + new string('a', 64) + "&t=abc&n=Home"));
     }
 }

@@ -89,8 +89,8 @@ internal static class DaemonCommand
         }
 
         // The home network is off until the admin asks: a lan.json with {"enabled": true, "port": 7781} in the settings folder.
-        using var homeKey = LanEnabled(paths.Settings, out var lanPort, out var fallbackPort) ? HomeKey.LoadOrCreate(paths.Data) : null;
-        var lan = homeKey is null ? null : new LanOptions(homeKey.Certificate, lanPort, fallbackPort);
+        using var homeKey = LanEnabled(paths.Settings, out var lanPort, out var fallbackPort, out var homeName) ? HomeKey.LoadOrCreate(paths.Data) : null;
+        var lan = homeKey is null ? null : new LanOptions(homeKey.Certificate, lanPort, fallbackPort, homeName);
         await using var host = BifrostHost.Create(new BifrostHostOptions(Admin: new AdminSocketOptions(paths.AdminSocket, admin.Uid), Lan: lan,
             RotateHomeKey: () => { using var fresh = HomeKey.Rotate(paths.Data); return fresh.Fingerprint; }), people, TimeProvider.System, extensions: extensions, questions: questions);
         await host.StartAsync();
@@ -101,7 +101,7 @@ internal static class DaemonCommand
             await extensions.StartAllAsync();
             DaemonInfo.Write(paths.Runtime, new DaemonInfo(host.Port, Environment.ProcessId, Version));
             Console.WriteLine($"Bifröst listening on http://127.0.0.1:{host.Port} and, for {admin.Name}, on {paths.AdminSocket}");
-            using var announcer = homeKey is null ? null : new MdnsAnnouncer(Environment.MachineName, lanPort, homeKey.Fingerprint, logFactory.CreateLogger("Bifrost.Mdns"));
+            using var announcer = homeKey is null ? null : new MdnsAnnouncer(lan!.Name, lanPort, homeKey.Fingerprint, logFactory.CreateLogger("Bifrost.Mdns"));
             announcer?.Start();
             if (homeKey is not null) Console.WriteLine($"Home network: https://0.0.0.0:{lanPort}, home key {homeKey.Fingerprint}");
             try
@@ -123,14 +123,17 @@ internal static class DaemonCommand
         return 0;
     }
 
-    private static bool LanEnabled(string settings, out int port, out int? fallbackPort)
+    private static bool LanEnabled(string settings, out int port, out int? fallbackPort, out string? name)
     {
         port = LanOptions.DefaultPort;
         fallbackPort = null;
+        name = null;
         var path = Path.Combine(settings, "lan.json");
         if (!File.Exists(path)) return false;
         using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
         if (json.RootElement.TryGetProperty("port", out var p) && p.TryGetInt32(out var n) && n is > 0 and < 65536) port = n;
+        // "name": "Our home" is what links and the network call this home (the machine name by default).
+        if (json.RootElement.TryGetProperty("name", out var nameEl) && nameEl.ValueKind == System.Text.Json.JsonValueKind.String && nameEl.GetString() is { Length: > 0 and <= 60 } given) name = given;
         // "fallbackPort": 7782 turns on the plain-HTTP, view-only browser fallback (design §6.1); off otherwise.
         if (json.RootElement.TryGetProperty("fallbackPort", out var f) && f.TryGetInt32(out var fp) && fp is > 0 and < 65536) fallbackPort = fp;
         return json.RootElement.TryGetProperty("enabled", out var e) && e.ValueKind == System.Text.Json.JsonValueKind.True;

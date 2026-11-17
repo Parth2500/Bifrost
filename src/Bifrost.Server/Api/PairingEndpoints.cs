@@ -4,7 +4,7 @@ using Bifrost.Server.People;
 namespace Bifrost.Server.Api;
 
 /// <summary>Pairing path A: an admin invites a person, a device redeems the secret (design §7.1).</summary>
-internal sealed class PairingEndpoints(PairingService pairing, PeopleService people, string? fingerprint, int? lanPort)
+internal sealed class PairingEndpoints(PairingService pairing, PeopleService people, string? fingerprint, int? lanPort, string homeName)
 {
     public const string PairPath = "/api/v1/pair";
 
@@ -24,11 +24,23 @@ internal sealed class PairingEndpoints(PairingService pairing, PeopleService peo
         if (await people.GetPersonAsync(body.PersonId) is null) return Problem.Create(404, "person_not_found", "No such person.");
         if (pairing.Invite(body.PersonId) is not { } invitation) return Problem.Create(429, "too_many_invitations", "Too many open invitations.");
 
-        // The address is the one the admin used to reach this, so it is a name the device can reach too.
-        var link = $"bifrost://pair?h={Uri.EscapeDataString($"{context.Request.Host.Host}:{lanPort}")}&fp={fingerprint}"
-            + $"&t={invitation.Secret}&n={Uri.EscapeDataString(Environment.MachineName)}";
+        // The address the admin used to reach this, which a device can reach too, unless it was loopback:
+        // then this machine's own address on the home network.
+        var host = context.Request.Host.Host;
+        if (System.Net.IPAddress.TryParse(host.Trim('[', ']'), out var ip) && System.Net.IPAddress.IsLoopback(ip) || host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            host = LanAddress() ?? host;
+        }
+        var link = $"bifrost://pair?h={Uri.EscapeDataString($"{host}:{lanPort}")}&fp={fingerprint}"
+            + $"&t={invitation.Secret}&n={Uri.EscapeDataString(homeName)}";
         return Results.Ok(new { link, expiresAt = invitation.Expires });
     }
+
+    /// <summary>The first up, non-loopback IPv4 address of this machine.</summary>
+    private static string? LanAddress() => System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+        .Where(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up && n.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
+        .SelectMany(n => n.GetIPProperties().UnicastAddresses).Select(a => a.Address)
+        .FirstOrDefault(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)?.ToString();
 
     /// <summary>Public: the secret is the credential. Wrong secrets count against the caller in the host's limiter.</summary>
     private async Task<IResult> Pair(PairRequest body)

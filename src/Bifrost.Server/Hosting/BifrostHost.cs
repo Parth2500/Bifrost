@@ -38,6 +38,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
     private volatile bool _rotationPending;
     private readonly AuthFailureLimiter _limiter;
     private readonly AuthFailureLimiter _joinLimiter;
+    private readonly AuthFailureLimiter _everyone;
     private readonly TimeProvider _time;
     private readonly TaskCompletionSource _shutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private WebApplication? _app;
@@ -53,6 +54,9 @@ public sealed partial class BifrostHost : IAsyncDisposable
         _people = people;
         _extraLogs = extraLogs;
         _limiter = new AuthFailureLimiter(maxFailures: 20, window: TimeSpan.FromMinutes(1), time);
+        // One budget for the whole network: past the per-source table's cap a new source is not counted, and
+        // a flood from many addresses must still slow down. Valid tokens are never limited.
+        _everyone = new AuthFailureLimiter(maxFailures: 300, window: TimeSpan.FromMinutes(1), time);
         _joinLimiter = new AuthFailureLimiter(maxFailures: 10, window: TimeSpan.FromMinutes(1), time);
     }
 
@@ -227,7 +231,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
                 return Results.Ok(new { fingerprint, revokedDevices = revoked });
             });
         }
-        new PairingEndpoints(_pairing, _people, _options.Lan is { } l ? HomeKey.FingerprintOf(l.Certificate) : null, _options.Lan?.Port).Map(api);
+        new PairingEndpoints(_pairing, _people, _options.Lan is { } l ? HomeKey.FingerprintOf(l.Certificate) : null, _options.Lan?.Port, _options.Lan?.Name ?? Environment.MachineName).Map(api);
         ExtensionEndpoints.Map(api, _extensions);
         if (_questions is not null) QuestionEndpoints.MapForAdmins(api, _questions);
         new ExtensionProxy(_extensions, app.Services.GetRequiredService<Yarp.ReverseProxy.Forwarder.IHttpForwarder>()).Map(app);
@@ -303,13 +307,17 @@ public sealed partial class BifrostHost : IAsyncDisposable
                 await Problem.WriteAsync(context, 403, "view_only", "This listener is not encrypted: pair through the app.");
                 return;
             }
-            if (_limiter.IsBlocked(asker))
+            if (_limiter.IsBlocked(asker) || _everyone.IsBlocked("*"))
             {
                 await Problem.WriteAsync(context, 429, "too_many_attempts", "Too many failed attempts. Try again later.");
                 return;
             }
             await next();
-            if (context.Response.StatusCode == 401) _limiter.RecordFailure(asker); // a wrong secret
+            if (context.Response.StatusCode == 401)
+            {
+                _limiter.RecordFailure(asker); // a wrong secret
+                _everyone.RecordFailure("*");
+            }
             return;
         }
         var guarded = context.Request.Path.StartsWithSegments("/api") || context.Request.Path.StartsWithSegments(ExtensionProxy.Prefix);
@@ -348,12 +356,13 @@ public sealed partial class BifrostHost : IAsyncDisposable
         }
 
         var source = LimiterKey(context.Connection.RemoteIpAddress);
-        if (_limiter.IsBlocked(source))
+        if (_limiter.IsBlocked(source) || _everyone.IsBlocked("*"))
         {
             await Problem.WriteAsync(context, 429, "too_many_attempts", "Too many failed attempts. Try again later.");
             return;
         }
         _limiter.RecordFailure(source);
+        _everyone.RecordFailure("*");
         LogRefusedToken(Logger(context), source); // D5: the reason goes to the log, the client gets one answer; D7: never the token
         await Unauthorized(context);
     }
