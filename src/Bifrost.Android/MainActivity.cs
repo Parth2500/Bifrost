@@ -92,14 +92,17 @@ public sealed class MainActivity : Activity
     /// <summary>The person chose to forget: sign this device out on the home first, so its token stops working, then forget it here.</summary>
     private async Task ForgetAndSignOutAsync()
     {
+        var signedOut = false;
         try
         {
-            if (_client is { } client) await client.RevokeSelfAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            signedOut = _client is { } client && await client.RevokeSelfAsync().WaitAsync(TimeSpan.FromSeconds(5));
         }
-        catch (Exception e) when (e is HttpRequestException or TimeoutException or ArgumentException)
+        catch (Exception e) when (e is HttpRequestException or TimeoutException or OperationCanceledException or ArgumentException)
         {
-            Toast.MakeText(this, "The home could not be reached: ask the admin to sign this device out.", ToastLength.Long)?.Show();
+            // unreachable or too slow: handled below as "not signed out"
         }
+        // Forgotten here either way (the person asked), but never silently: if the home was not told, say so.
+        if (!signedOut) Toast.MakeText(this, "The home could not be reached: ask the admin to sign this device out.", ToastLength.Long)?.Show();
         ForgetHome();
     }
 

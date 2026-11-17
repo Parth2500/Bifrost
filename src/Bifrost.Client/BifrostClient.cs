@@ -93,11 +93,12 @@ public sealed class BifrostClient : IDisposable
         return ((int)response.StatusCode, await response.Content.ReadAsStringAsync(ct));
     }
 
-    /// <summary>Signs this device out on the home, so its token stops working. Used when the person forgets the home.</summary>
+    /// <summary>Signs this device out on the home, so its token stops working. True when it no longer works there.</summary>
     public async Task<bool> RevokeSelfAsync(CancellationToken ct = default)
     {
         var (status, _) = await SendAsync(Area.HomePages, "DELETE", $"/api/v1/devices/{Home.DeviceId}", null, ct);
-        return status is >= 200 and < 300;
+        // Signed out now, or already: the home no longer knows this token (401) or this device (404).
+        return status is (>= 200 and < 300) or 401 or 404;
     }
 
     public Task<HttpResponseMessage> GetHomeAsync(string extension, Uri address, IReadOnlyDictionary<string, string>? headers = null, CancellationToken ct = default) =>
