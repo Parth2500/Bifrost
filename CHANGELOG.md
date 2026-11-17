@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added: pairing by invitation link (step 3)
+
+- `POST /api/v1/invitations {personId}` (admin) returns a `bifrost://pair?h=…&fp=…&t=…&n=…` link,
+  single-use, valid 10 minutes, kept in memory as a hash. Needs the home network listener on.
+- `POST /api/v1/pair {secret, name, platform}` (no token) returns a device token. A wrong secret counts
+  against the caller's failure budget. Showing the link as a QR code is left to the screens.
+
 - `bifrost desk`: `BIFROST_DESK_EXPIRE_SECONDS` sets how long a notification stays (default 0: until answered).
   For the installed unit use `systemctl --user edit bifrost-desk` and add `Environment=BIFROST_DESK_EXPIRE_SECONDS=60`.
 

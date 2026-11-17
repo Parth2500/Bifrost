@@ -32,6 +32,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
     private readonly ILoggerProvider? _extraLogs;
     private readonly ExtensionManager? _extensions;
     private readonly QuestionService? _questions;
+    private readonly PairingService _pairing;
     private readonly AuthFailureLimiter _limiter;
     private readonly TaskCompletionSource _shutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private WebApplication? _app;
@@ -41,6 +42,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
     {
         _extensions = extensions;
         _questions = questions;
+        _pairing = new PairingService(people, time);
         _options = options;
         _people = people;
         _extraLogs = extraLogs;
@@ -189,6 +191,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
         MeEndpoints.Map(api);
         new PeopleEndpoints(_people).Map(api);
         new DeviceEndpoints(_people).Map(api);
+        new PairingEndpoints(_pairing, _people, _options.Lan is { } l ? HomeKey.FingerprintOf(l.Certificate) : null, _options.Lan?.Port).Map(api);
         ExtensionEndpoints.Map(api, _extensions);
         if (_questions is not null) QuestionEndpoints.MapForAdmins(api, _questions);
         new ExtensionProxy(_extensions, app.Services.GetRequiredService<Yarp.ReverseProxy.Forwarder.IHttpForwarder>()).Map(app);
@@ -248,6 +251,18 @@ public sealed partial class BifrostHost : IAsyncDisposable
         }
 
         var isPublic = HttpMethods.IsGet(context.Request.Method) && context.Request.Path == "/api/v1/server";
+        if (HttpMethods.IsPost(context.Request.Method) && context.Request.Path == PairingEndpoints.PairPath)
+        {
+            var asker = LimiterKey(context.Connection.RemoteIpAddress);
+            if (_limiter.IsBlocked(asker))
+            {
+                await Problem.WriteAsync(context, 429, "too_many_attempts", "Too many failed attempts. Try again later.");
+                return;
+            }
+            await next();
+            if (context.Response.StatusCode == 401) _limiter.RecordFailure(asker); // a wrong secret
+            return;
+        }
         var guarded = context.Request.Path.StartsWithSegments("/api") || context.Request.Path.StartsWithSegments(ExtensionProxy.Prefix);
         if (isPublic || !guarded)
         {

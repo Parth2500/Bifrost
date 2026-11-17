@@ -33,7 +33,7 @@ public sealed class HostFixture : IAsyncDisposable
 
     /// <param name="extensions">Fake extensions to run: name → <c>FAKE_MODE</c>.</param>
     /// <param name="adminUid">The account the admin socket accepts; this process's own when null.</param>
-    public static async Task<HostFixture> StartAsync(int port = 0, IReadOnlyDictionary<string, string>? extensions = null, uint? adminUid = null)
+    public static async Task<HostFixture> StartAsync(int port = 0, IReadOnlyDictionary<string, string>? extensions = null, uint? adminUid = null, LanOptions? lan = null)
     {
         var database = Bifrost.Server.Persistence.Database.OpenMemory();
         await Bifrost.Server.Persistence.Database.MigrateAsync(database);
@@ -56,7 +56,7 @@ public sealed class HostFixture : IAsyncDisposable
             await manager.StartAllAsync();
         }
 
-        var options = new BifrostHostOptions(port, new AdminSocketOptions(adminSocket, adminUid ?? Bifrost.Server.Security.PeerCredentials.CurrentUid()));
+        var options = new BifrostHostOptions(port, new AdminSocketOptions(adminSocket, adminUid ?? Bifrost.Server.Security.PeerCredentials.CurrentUid()), lan);
         var questions = new Bifrost.Server.Questions.QuestionService(people, time);
         var host = BifrostHost.Create(options, people, time, logs, manager, questions);
         await host.StartAsync();
