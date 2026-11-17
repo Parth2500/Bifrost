@@ -71,10 +71,17 @@ internal sealed class JoinEndpoints(JoinService? join, PeopleService people, Bif
         if (!context.Principal().IsAdmin) return Problem.Create(403, "forbidden", "Only an admin can approve a device.");
         if (Off is { } off) return off;
         if (await people.GetPersonAsync(body.PersonId) is null) return Problem.Create(404, "person_not_found", "No such person.");
-        return join!.Approve(id, body.PersonId) ? Results.NoContent() : Problem.Create(404, "join_not_found", "No such waiting request.");
+        if (!join!.Approve(id, body.PersonId)) return Problem.Create(404, "join_not_found", "No such waiting request.");
+        await people.RecordAsync(context.Principal(), "join.approved", id, body.PersonId.ToString());
+        return Results.NoContent();
     }
 
-    private IResult Reject(HttpContext context, Guid id) =>
-        !context.Principal().IsAdmin ? Problem.Create(403, "forbidden", "Only an admin can refuse a device.")
-        : Off ?? (join!.Reject(id) ? Results.NoContent() : Problem.Create(404, "join_not_found", "No such waiting request."));
+    private async Task<IResult> Reject(HttpContext context, Guid id)
+    {
+        if (!context.Principal().IsAdmin) return Problem.Create(403, "forbidden", "Only an admin can refuse a device.");
+        if (Off is { } off) return off;
+        if (!join!.Reject(id)) return Problem.Create(404, "join_not_found", "No such waiting request.");
+        await people.RecordAsync(context.Principal(), "join.rejected", id, null);
+        return Results.NoContent();
+    }
 }

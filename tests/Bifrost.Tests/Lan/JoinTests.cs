@@ -50,5 +50,10 @@ public class JoinTests
         await home.Http.DeleteAsync($"/api/v1/join-requests/{otherId}");
         var refused = await device.PostAsJsonAsync($"/api/v1/join/{otherId}/collect", new { nonce = "unused" });
         Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode); // wrong nonce looks like unknown, not like a refusal
+
+        await using var db = await home.Database.CreateDbContextAsync();
+        var kinds = db.Audit.Select(a => a.Kind).ToList();
+        Assert.Contains("join.approved", kinds);
+        Assert.Contains("join.rejected", kinds);
     }
 }
