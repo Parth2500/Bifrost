@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added: pairing by a compared 6-digit code (step 3)
+
+- A device with no camera: `POST /api/v1/join {name, platform, nonce}` returns a request id and the
+  server's nonce. The code is the first 6 digits of SHA-256(fingerprint the device saw | device nonce |
+  server nonce), so a device in the middle shows a different one. Admins see it in
+  `GET /api/v1/join-requests`, then `POST …/{id}/approve {personId}` or `DELETE …/{id}`.
+- The device asks `POST /api/v1/join/{id}/collect {nonce}`: 202 waiting, 403 refused, 200 with its
+  token once. At most 5 requests wait, each for 5 minutes. Not yet in the audit log.
+
 ### Added: pairing by invitation link (step 3)
 
 - `POST /api/v1/invitations {personId}` (admin) returns a `bifrost://pair?h=…&fp=…&t=…&n=…` link,

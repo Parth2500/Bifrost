@@ -33,7 +33,9 @@ public sealed partial class BifrostHost : IAsyncDisposable
     private readonly ExtensionManager? _extensions;
     private readonly QuestionService? _questions;
     private readonly PairingService _pairing;
+    private JoinService? _join;
     private readonly AuthFailureLimiter _limiter;
+    private readonly TimeProvider _time;
     private readonly TaskCompletionSource _shutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private WebApplication? _app;
 
@@ -42,6 +44,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
     {
         _extensions = extensions;
         _questions = questions;
+        _time = time;
         _pairing = new PairingService(people, time);
         _options = options;
         _people = people;
@@ -191,6 +194,8 @@ public sealed partial class BifrostHost : IAsyncDisposable
         MeEndpoints.Map(api);
         new PeopleEndpoints(_people).Map(api);
         new DeviceEndpoints(_people).Map(api);
+        _join = _options.Lan is { } lanJoin ? new JoinService(_people, System.Security.Cryptography.SHA256.HashData(lanJoin.Certificate.PublicKey.ExportSubjectPublicKeyInfo()), _time) : null;
+        new JoinEndpoints(_join, _people).Map(api);
         new PairingEndpoints(_pairing, _people, _options.Lan is { } l ? HomeKey.FingerprintOf(l.Certificate) : null, _options.Lan?.Port).Map(api);
         ExtensionEndpoints.Map(api, _extensions);
         if (_questions is not null) QuestionEndpoints.MapForAdmins(api, _questions);
@@ -251,7 +256,8 @@ public sealed partial class BifrostHost : IAsyncDisposable
         }
 
         var isPublic = HttpMethods.IsGet(context.Request.Method) && context.Request.Path == "/api/v1/server";
-        if (HttpMethods.IsPost(context.Request.Method) && context.Request.Path == PairingEndpoints.PairPath)
+        if (HttpMethods.IsPost(context.Request.Method)
+            && (context.Request.Path == PairingEndpoints.PairPath || context.Request.Path.StartsWithSegments(JoinEndpoints.PublicPrefix)))
         {
             var asker = LimiterKey(context.Connection.RemoteIpAddress);
             if (_limiter.IsBlocked(asker))
