@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added: the Android app, first cut (step 4)
+
+- `src/Bifrost.Android`: a thin .NET for Android shell, no MAUI. It pairs by invitation link (also from
+  a tapped `bifrost://pair` link), then shows `/x/sleipnir/` in a web view whose requests all go through
+  `BifrostClient.GetHomeAsync`, so the key is pinned and the token is sent on every sub-request. It is
+  built outside the solution: `dotnet build src/Bifrost.Android -p:JavaSdkDirectory=<JDK 21>`.
+- Joining by compared code is audited now: `join.approved` and `join.rejected` are in the audit log.
+
 ### Added: mDNS announcement (step 3)
 
 - While the home network listener is on, Bifröst announces `_bifrost._tcp` through Avahi

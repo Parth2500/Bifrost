@@ -66,5 +66,31 @@ public sealed partial class BifrostClient : IDisposable
         return _http.GetAsync(target, ct);
     }
 
+    /// <summary>
+    /// For a web view that hands every request to the app: GET one address under <c>/x/</c> on this home,
+    /// pinned and signed in. Anything else (another host, scheme or folder) is refused before it is sent.
+    /// </summary>
+    /// <exception cref="ArgumentException">The address is not on this home's extension screens.</exception>
+    public Task<HttpResponseMessage> GetHomeAsync(Uri address, IReadOnlyDictionary<string, string>? headers = null, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        var home = new Uri($"https://{Home.Address}/");
+        if (address.Scheme != Uri.UriSchemeHttps || address.Authority != home.Authority || !address.AbsolutePath.StartsWith("/x/", StringComparison.Ordinal)
+            || address.AbsolutePath.Split('/').Any(segment => Uri.UnescapeDataString(segment) is "." or ".."))
+        {
+            throw new ArgumentException("Not an extension screen of this home.", nameof(address));
+        }
+        using var request = new HttpRequestMessage(HttpMethod.Get, address);
+        foreach (var (name, value) in headers ?? new Dictionary<string, string>())
+        {
+            // The person's own headers help the page; the token and the host are never theirs to set.
+            if (!name.Equals("Authorization", StringComparison.OrdinalIgnoreCase) && !name.Equals("Host", StringComparison.OrdinalIgnoreCase))
+            {
+                request.Headers.TryAddWithoutValidation(name, value);
+            }
+        }
+        return _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+    }
+
     public void Dispose() => _http.Dispose();
 }

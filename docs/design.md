@@ -509,8 +509,13 @@ Each step ends with working, tested software.
 4. **Client app, first cut.** Pair, pin, show Sleipnir's screens. Run the web view pinning test here.
    **Started** (2026-11-17): the shared .NET client library `Bifrost.Client` (parse the invitation link,
    pairing by link and by compared code, an HTTP client that pins the key, `BifrostClient` for who-am-I, the extension list and an extension's address), tested against a real host
-   over loopback. **Left:** the Android app, and the pinning test on each web view engine; both need an
-   Android SDK and real devices.
+   over loopback. **Android app first cut builds**
+   (`src/Bifrost.Android`, outside `Bifrost.slnx`; JDK 21 and the android workload needed): pair with
+   an invitation link, then show Sleipnir's screens in a web view that is not allowed to reach the
+   network itself: every request goes through the pinned, signed-in client. **Not yet run on a device or
+   emulator.** **Left:** run it; pairing by code on the app; the pinning test on each web view engine
+   (the Android one is the interception in `MainActivity`; the other three engines are not started);
+   the token belongs in the Android Keystore, not plain preferences.
 5. **Install and update.** Signed releases, rollback, install from file.
 6. **Folders and events.** Per-person folders, visibility, publish and subscribe. Saga, when it
    exists, is the second extension and the test of this interface.
