@@ -512,8 +512,10 @@ Each step ends with working, tested software.
    over loopback. **Android app first cut builds**
    (`src/Bifrost.Android`, outside `Bifrost.slnx`; JDK 21 and the android workload needed): pair with
    an invitation link, then show Sleipnir's screens in a web view that is not allowed to reach the
-   network itself: every request goes through the pinned, signed-in client. **Not yet run on a device or
-   emulator.** **Left:** run it; pairing by code on the app; the pinning test on each web view engine
+   network itself: every request goes through the pinned, signed-in client. **Run on a real Pixel 6a
+   (2026-11-17): pairing by link over the home Wi-Fi worked; the web view then showed a blank page
+   because no Sleipnir was running under that throwaway home.** **Left:** showing real Sleipnir screens;
+   pairing by code on the app; the pinning test on each web view engine
    (the Android one is the interception in `MainActivity`; the other three engines are not started);
    the token belongs in the Android Keystore, not plain preferences.
 5. **Install and update.** Signed releases, rollback, install from file.

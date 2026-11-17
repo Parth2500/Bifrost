@@ -36,8 +36,14 @@ public sealed class MainActivity : Activity
 
     private void ShowPairing(string? link)
     {
-        var field = new EditText(this) { Hint = "bifrost://pair?…", Text = link };
-        var status = new TextView(this);
+        var wide = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
+        // Colours set outright: the theme's text colour can be the same as its background.
+        var field = new EditText(this) { Hint = "bifrost://pair?…", Text = link, LayoutParameters = wide };
+        field.SetTextColor(global::Android.Graphics.Color.Black);
+        field.SetHintTextColor(global::Android.Graphics.Color.Gray);
+        field.SetTextSize(global::Android.Util.ComplexUnitType.Sp, 14);
+        var status = new TextView(this) { LayoutParameters = wide };
+        status.SetTextColor(global::Android.Graphics.Color.Black);
         // Say which home and which key the link names, so the person can check before pairing.
         void Describe()
         {
@@ -52,7 +58,7 @@ public sealed class MainActivity : Activity
             }
         }
         field.TextChanged += (_, _) => Describe();
-        var pair = new Button(this) { Text = "Pair" };
+        var pair = new Button(this) { Text = "Pair", LayoutParameters = wide };
         pair.Click += async (_, _) =>
         {
             status.Text = "Pairing…";
@@ -68,11 +74,12 @@ public sealed class MainActivity : Activity
             }
         };
         var layout = new LinearLayout(this) { Orientation = Orientation.Vertical };
-        layout.SetPadding(32, 32, 32, 32);
+        layout.SetPadding(32, BarsHeight() + 16, 32, 32);
         layout.AddView(field);
-        layout.AddView(pair);
         layout.AddView(status);
+        layout.AddView(pair);
         SetContentView(layout);
+        Describe(); // a link that came with the intent is described at once
     }
 
     private void Show(PairedHome home)
@@ -86,8 +93,21 @@ public sealed class MainActivity : Activity
         // A service worker would fetch outside this app's client; none is allowed to.
         ServiceWorkerController.Instance.SetServiceWorkerClient(new RefusingWorkerClient());
         web.SetWebViewClient(new PinnedClient(_client, Extension));
-        SetContentView(web);
+        // Newer Android draws behind the status and title bars; leave room for them.
+        var frame = new FrameLayout(this);
+        frame.SetPadding(0, BarsHeight(), 0, 0);
+        frame.AddView(web);
+        SetContentView(frame);
         web.LoadUrl(_client.ExtensionAddress(Extension).ToString());
+    }
+
+    private int BarsHeight()
+    {
+        var bar = new global::Android.Util.TypedValue();
+        var height = Theme!.ResolveAttribute(global::Android.Resource.Attribute.ActionBarSize, bar, true)
+            ? global::Android.Util.TypedValue.ComplexToDimensionPixelSize(bar.Data, Resources!.DisplayMetrics!) : 0;
+        var status = Resources!.GetIdentifier("status_bar_height", "dimen", "android");
+        return height + (status > 0 ? Resources.GetDimensionPixelSize(status) : 0);
     }
 
     // shortcut: plain private preferences, readable by anyone with root; move to the Android Keystore before release.
