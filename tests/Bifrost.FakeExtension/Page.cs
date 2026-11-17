@@ -35,6 +35,10 @@ internal static class Page
             const echoed = await t(new Promise((ok, no) => { const w = new WebSocket(url); w.onopen = () => w.send('ping'); w.onmessage = m => { ok(m.data); w.close(); }; w.onerror = () => no(new Error('socket error')); }), 6000);
             row('websocket to the extension', echoed === 'ping');
           } catch (e) { row('websocket to the extension', false, String(e)); }
+          try {
+            const seen = await t(new Promise(ok => { const got = []; const es = new EventSource('events'); es.onmessage = m => { got.push(m.data); if (got.length === 3) { es.close(); ok(got.join(',')); } }; es.onerror = () => { es.close(); ok('error after ' + got.join(',')); }; }), 6000);
+            row('live events over a plain request', seen === '1,2,3', seen);
+          } catch (e) { row('live events over a plain request', false, String(e)); }
           await fetch('report?r=' + encodeURIComponent(JSON.stringify(results))).catch(() => {});
         })();
         """;

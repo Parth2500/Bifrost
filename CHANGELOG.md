@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Decision, from a real phone:** the Android web view cannot carry a WebSocket to a self-signed home, so
+  extension screens use server-sent events for live updates. `FAKE_MODE=page` in the fake extension
+  serves a page that tests this (script, style, image, fetch, off-site block, WebSocket, events).
+
 ### Added: `bifrost invite`, a home name, a LAN-wide failure budget (step 3)
 
 - **`bifrost invite [person]`** prints an invitation link and a QR code to scan with the app (the admin's

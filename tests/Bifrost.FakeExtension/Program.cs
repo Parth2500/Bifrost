@@ -39,6 +39,17 @@ if (mode == "page")
     app.MapGet("/data.json", () => Results.Json(new { hello = "from the extension" }));
     // The page reports with a GET: a web view that hands every request to the app cannot send a body.
     app.MapGet("/report", async (string r) => { await File.WriteAllTextAsync(Path.Combine(dataDir, "page-report.json"), r); return Results.NoContent(); });
+    // Live updates without a WebSocket: a stream of events over an ordinary GET.
+    app.MapGet("/events", async (HttpContext context) =>
+    {
+        context.Response.ContentType = "text/event-stream";
+        for (var i = 1; i <= 3; i++)
+        {
+            await context.Response.WriteAsync($"data: {i}\n\n", context.RequestAborted);
+            await context.Response.Body.FlushAsync(context.RequestAborted);
+            await Task.Delay(300, context.RequestAborted);
+        }
+    });
     app.Map("/ws", async (HttpContext context) =>
     {
         if (!context.WebSockets.IsWebSocketRequest) return Results.BadRequest();

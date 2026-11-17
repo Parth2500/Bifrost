@@ -459,6 +459,14 @@ The only thing a home sends online is a **notice**, and the only thing it reads 
   GPL-2.0 component, not part of this app. Check the state of the .NET bindings for Android's media
   library before planning it.
 
+**Proved on a real Pixel 6a (2026-11-17), and the design changes with it:** a web view that hands every
+request to the app keeps the key pinned and the token on every sub-request, for pages, scripts, styles,
+images, fetches and server-sent events. A **WebSocket does not work**: Android does not apply the
+certificate-error hook to it (`net_error -202`), and it never passes through the app's request hook.
+So extension screens get live updates over **server-sent events on an ordinary GET**, not a WebSocket.
+The WebSocket ticket in §5 is dropped for the app; a WebSocket stays possible for the host browser.
+Video segments are not tried yet.
+
 **To prove before the design depends on it:** that the Android web view enforces the pinned key for
 every request a screen makes, including video segments and WebSockets.
 
