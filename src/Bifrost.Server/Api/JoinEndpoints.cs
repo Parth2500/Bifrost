@@ -7,13 +7,14 @@ internal sealed class JoinEndpoints(JoinService? join, PeopleService people)
 {
     public const string PublicPrefix = "/api/v1/join";
 
-    private sealed record StartRequest(string? Name, string? Platform, string? Nonce);
+    private sealed record StartRequest(string? Name, string? Platform, string? Commit);
     private sealed record CollectRequest(string? Nonce);
     private sealed record ApproveRequest(Guid PersonId);
 
     public void Map(IEndpointRouteBuilder api)
     {
         api.MapPost("/join", Start);
+        api.MapPost("/join/{id:guid}/reveal", Reveal);
         api.MapPost("/join/{id:guid}/collect", Collect);
         api.MapGet("/join-requests", List);
         api.MapPost("/join-requests/{id:guid}/approve", Approve);
@@ -22,21 +23,25 @@ internal sealed class JoinEndpoints(JoinService? join, PeopleService people)
 
     private IResult? Off => join is null ? Problem.Create(409, "lan_off", "The home network listener is off.") : null;
 
-    private async Task<IResult> Start(StartRequest body)
+    private IResult Start(HttpContext context, StartRequest body)
     {
         if (Off is { } off) return off;
         if (string.IsNullOrWhiteSpace(body.Name) || body.Name.Length > 100 || (body.Platform?.Length ?? 0) > 50
-            || body.Nonce is not { Length: >= 16 and <= 64 })
+            || body.Commit is not { Length: 64 } || !body.Commit.All(Uri.IsHexDigit))
         {
-            return Problem.Create(400, "invalid_request", "A device name and a nonce of 16 to 64 characters are required.");
+            return Problem.Create(400, "invalid_request", "A device name and a commitment (SHA-256 of the nonce, as 64 hex characters) are required.");
         }
-        if (join!.Start(body.Name.Trim(), body.Platform ?? "unknown", body.Nonce) is not { } started)
+        if (join!.Start(body.Name.Trim(), body.Platform ?? "unknown", Convert.FromHexString(body.Commit),
+                Bifrost.Server.Hosting.BifrostHost.LimiterKey(context.Connection.RemoteIpAddress)) is not { } started)
         {
-            return Problem.Create(429, "too_many_requests", "Too many join requests are waiting.");
+            return Problem.Create(429, "too_many_requests", "A join request from this address, or too many overall, is already waiting.");
         }
-        await Task.CompletedTask;
         return Results.Ok(new { requestId = started.Id, serverNonce = started.ServerNonce });
     }
+
+    /// <summary>After the server's nonce is known the device shows its own; only then the admin sees the code.</summary>
+    private IResult Reveal(Guid id, CollectRequest body) =>
+        Off ?? (join!.Reveal(id, body.Nonce ?? "") ? Results.NoContent() : Problem.Create(401, "join_unknown", "Unknown request or the nonce does not match the commitment."));
 
     /// <summary>202 while the admin has not decided; 200 with the token once; 403 when refused.</summary>
     private async Task<IResult> Collect(Guid id, CollectRequest body)

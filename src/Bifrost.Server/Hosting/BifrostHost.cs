@@ -327,7 +327,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
     }
 
     /// <summary>IPv4-mapped addresses count as IPv4, and an IPv6 host gets its whole /64, so one machine cannot mint sources.</summary>
-    private static string LimiterKey(IPAddress? address)
+    internal static string LimiterKey(IPAddress? address)
     {
         if (address is null) return "unknown";
         if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();

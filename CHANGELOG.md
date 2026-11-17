@@ -2,10 +2,11 @@
 
 ## Unreleased
 
-### Added: pairing by a compared 6-digit code (step 3)
+### Added: pairing by a compared 8-digit code (step 3)
 
-- A device with no camera: `POST /api/v1/join {name, platform, nonce}` returns a request id and the
-  server's nonce. The code is the first 6 digits of SHA-256(fingerprint the device saw | device nonce |
+- A device with no camera: `POST /api/v1/join {name, platform, commit}` (commit = SHA-256 of its nonce)
+  returns a request id and the server's nonce; then `POST …/{id}/reveal {nonce}` shows the nonce. Commit
+  before reveal stops a middleman choosing a nonce to make the two codes match. The code is 8 digits of SHA-256(fingerprint the device saw | device nonce |
   server nonce), so a device in the middle shows a different one. Admins see it in
   `GET /api/v1/join-requests`, then `POST …/{id}/approve {personId}` or `DELETE …/{id}`.
 - The device asks `POST /api/v1/join/{id}/collect {nonce}`: 202 waiting, 403 refused, 200 with its

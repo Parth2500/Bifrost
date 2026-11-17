@@ -10,6 +10,8 @@ namespace Bifrost.Tests.Lan;
 
 public class JoinTests
 {
+    private static string Commit(string nonce) => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(nonce)));
+
     [Fact]
     public async Task A_device_joins_when_the_admin_sees_the_same_code_and_a_refused_one_gets_nothing()
     {
@@ -19,8 +21,13 @@ public class JoinTests
         using var device = new HttpClient { BaseAddress = home.Http.BaseAddress };
         var nonce = Guid.NewGuid().ToString("N");
 
-        var started = await (await device.PostAsJsonAsync("/api/v1/join", new { name = "TV", platform = "tizen", nonce })).Content.ReadFromJsonAsync<JsonElement>();
+        var started = await (await device.PostAsJsonAsync("/api/v1/join", new { name = "TV", platform = "tizen", commit = Commit(nonce) })).Content.ReadFromJsonAsync<JsonElement>();
         var id = started.GetProperty("requestId").GetGuid();
+        using var early = await home.Http.GetFromJsonAsync<JsonDocument>("/api/v1/join-requests");
+        Assert.Equal(0, early!.RootElement.GetArrayLength()); // no code to compare before the nonce is revealed
+        using var wrongReveal = await device.PostAsJsonAsync($"/api/v1/join/{id}/reveal", new { nonce = "not-the-committed-one" });
+        Assert.Equal(HttpStatusCode.Unauthorized, wrongReveal.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await device.PostAsJsonAsync($"/api/v1/join/{id}/reveal", new { nonce })).StatusCode);
         var mine = JoinService.Code(System.Security.Cryptography.SHA256.HashData(key.Certificate.PublicKey.ExportSubjectPublicKeyInfo()), nonce, started.GetProperty("serverNonce").GetString()!);
 
         var listed = await home.Http.GetFromJsonAsync<JsonElement>("/api/v1/join-requests");
@@ -38,7 +45,7 @@ public class JoinTests
         using var twice = await device.PostAsJsonAsync($"/api/v1/join/{id}/collect", new { nonce });
         Assert.Equal(HttpStatusCode.Unauthorized, twice.StatusCode); // the token is handed over once
 
-        var other = await (await device.PostAsJsonAsync("/api/v1/join", new { name = "Stranger", platform = "x", nonce = Guid.NewGuid().ToString("N") })).Content.ReadFromJsonAsync<JsonElement>();
+        var other = await (await device.PostAsJsonAsync("/api/v1/join", new { name = "Stranger", platform = "x", commit = Commit("another-nonce-of-length") })).Content.ReadFromJsonAsync<JsonElement>();
         var otherId = other.GetProperty("requestId").GetGuid();
         await home.Http.DeleteAsync($"/api/v1/join-requests/{otherId}");
         var refused = await device.PostAsJsonAsync($"/api/v1/join/{otherId}/collect", new { nonce = "unused" });
