@@ -25,7 +25,7 @@ public class DeskLoopTests
         public Task<string?> ShowAsync(Guid questionId, string title, string text, IReadOnlyList<Choice> choices, CancellationToken closeWhen)
         {
             Shown.Enqueue(questionId);
-            var click = Clicks.GetOrAdd(questionId, _ => new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously));
+            var click = Clicks[questionId] = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
             closeWhen.Register(() =>
             {
                 Closed[questionId] = true;
@@ -35,6 +35,9 @@ public class DeskLoopTests
         }
 
         public void Click(Guid id, string choice) => Clicks[id].TrySetResult(choice);
+
+        /// <summary>The admin closes the notification without choosing.</summary>
+        public void Dismiss(Guid id) => Clicks[id].TrySetResult(null);
     }
 
     private static async Task Until(Func<bool> condition, string what, Action? eachTime = null)
@@ -74,6 +77,57 @@ public class DeskLoopTests
         await stop.CancelAsync();
         await loop.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.True(notifier.Closed.ContainsKey(second.Id)); // stopping takes what is left off the screen
+    }
+
+    [Fact]
+    public async Task A_dismissed_question_comes_back_until_it_is_answered()
+    {
+        await using var home = await HostFixture.StartAsync();
+        var notifier = new FakeNotifier();
+        var deskTime = new FakeTimeProvider();
+        using var stop = new CancellationTokenSource();
+        var loop = new DeskLoop(home.AdminHttp, notifier, deskTime).RunAsync(stop.Token);
+        var question = Ask(home);
+        await Until(() => notifier.Shown.Count == 1, "the question is shown");
+
+        notifier.Dismiss(question.Id);
+        await Task.Delay(200);
+        Assert.Single(notifier.Shown); // not at once: a dismissal gets a minute of peace
+        Assert.Equal(QuestionState.Open, home.Questions.Get(question.Id)!.State);
+
+        await Until(() => notifier.Shown.Count == 2, "it is shown again", () => deskTime.Advance(TimeSpan.FromSeconds(30)));
+        notifier.Click(question.Id, "approve");
+        await Until(() => home.Questions.Get(question.Id)!.State == QuestionState.Answered, "the click answers it");
+
+        await Task.Delay(100);
+        deskTime.Advance(TimeSpan.FromMinutes(5));
+        await Task.Delay(100);
+        Assert.Equal(2, notifier.Shown.Count); // answered: it does not come back
+        await stop.CancelAsync();
+        await loop.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public async Task A_dismissed_question_that_closes_elsewhere_does_not_come_back()
+    {
+        await using var home = await HostFixture.StartAsync();
+        var notifier = new FakeNotifier();
+        var deskTime = new FakeTimeProvider();
+        using var stop = new CancellationTokenSource();
+        var loop = new DeskLoop(home.AdminHttp, notifier, deskTime).RunAsync(stop.Token);
+        var question = Ask(home);
+        await Until(() => notifier.Shown.Count == 1, "the question is shown");
+        notifier.Dismiss(question.Id);
+
+        home.Questions.Withdraw(question.Id, "sleipnir");
+        var next = Ask(home, "Next?"); // proves the desk has seen the change
+        await Until(() => notifier.Shown.Contains(next.Id), "the next question is shown");
+        deskTime.Advance(TimeSpan.FromMinutes(5));
+        await Task.Delay(200);
+
+        Assert.Single(notifier.Shown, id => id == question.Id);
+        await stop.CancelAsync();
+        await loop.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
     [Fact]
@@ -169,7 +223,7 @@ public class DeskLoopTests
         var arguments = NotifySendNotifier.Arguments("-Download for <Kid>?", "a.example & <b>film</b>", YesNo);
 
         Assert.Equal(
-            ["--app-name=Bifröst", "--print-id", "--wait", "--action=approve=Approve", "--action=reject=Reject", "--",
+            ["--app-name=Bifröst", "--urgency=critical", "--expire-time=0", "--print-id", "--wait", "--action=approve=Approve", "--action=reject=Reject", "--",
                 "-Download for <Kid>?", "a.example &amp; &lt;b&gt;film&lt;/b&gt;"],
             arguments);
     }

@@ -10,12 +10,15 @@ namespace Bifrost.App.Desk;
 
 /// <summary>
 /// The desk companion's work (design §5.1): long-poll the open questions on the admin socket, show
-/// each one once, take down those that closed elsewhere, and send the admin's click as the answer.
+/// each one (again a minute after a dismissal, until it is answered), take down those that closed elsewhere, and send the admin's click as the answer.
 /// Bifröst may be down, starting, or restarting under it: it keeps trying, with a growing delay.
 /// </summary>
 public sealed partial class DeskLoop(HttpClient adminSocket, INotifier notifier, TimeProvider time, ILogger? logger = null)
 {
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long a dismissed question stays away before it is shown again.</summary>
+    public static readonly TimeSpan ReshowAfter = TimeSpan.FromMinutes(1);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.KebabCaseLower) },
@@ -95,8 +98,13 @@ public sealed partial class DeskLoop(HttpClient adminSocket, INotifier notifier,
     {
         try
         {
-            var choice = await notifier.ShowAsync(question.Id, question.Title, question.Text, question.Choices, closeWhen);
-            if (choice is null) return;
+            string? choice;
+            while ((choice = await notifier.ShowAsync(question.Id, question.Title, question.Text, question.Choices, closeWhen)) is null)
+            {
+                // Dismissed without an answer (on GNOME a click on the notification itself does that),
+                // but the question is still open: it comes back. The wait ends when the question closes.
+                await Task.Delay(ReshowAfter, time, closeWhen);
+            }
 
             // Not tied to closeWhen: a click that raced the close still gets its honest "already closed".
             using var response = await adminSocket.PostAsJsonAsync($"/api/v1/questions/{question.Id}/answer", new AnswerRequest(choice), Json, CancellationToken.None);

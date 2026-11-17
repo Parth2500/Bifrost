@@ -54,7 +54,9 @@ public sealed class NotifySendNotifier : INotifier
         ArgumentNullException.ThrowIfNull(text);
         var body = text.Replace("&", "&amp;", StringComparison.Ordinal).Replace("<", "&lt;", StringComparison.Ordinal).Replace(">", "&gt;", StringComparison.Ordinal);
         // "--" ends the options, so a title that starts with a dash is still a title.
-        return ["--app-name=Bifröst", "--print-id", "--wait", .. choices.Select(c => $"--action={c.Id}={c.Label}"), "--", title, body];
+        // Critical and never expiring: a question waits on screen for its answer. At normal urgency a
+        // desktop (GNOME) takes the banner away after a few seconds and reports it closed.
+        return ["--app-name=Bifröst", "--urgency=critical", "--expire-time=0", "--print-id", "--wait", .. choices.Select(c => $"--action={c.Id}={c.Label}"), "--", title, body];
     }
 
     private static async Task CloseAsync(uint id)
