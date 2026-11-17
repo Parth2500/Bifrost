@@ -282,6 +282,17 @@ public sealed partial class BifrostHost : IAsyncDisposable
             .SelectMany(n => n.GetIPProperties().UnicastAddresses).Any(a => a.Address.Equals(address));
     }
 
+    /// <summary>
+    /// When wrong guesses across the whole network pass the budget, each further one waits. Nothing is refused
+    /// on this account, so a flood from many addresses cannot lock the owner out of pairing.
+    /// </summary>
+    private async Task SlowDownIfFlooded(CancellationToken ct)
+    {
+        if (!_everyone.IsBlocked("*")) return;
+        try { await Task.Delay(TimeSpan.FromSeconds(2), ct); }
+        catch (OperationCanceledException) { }
+    }
+
     private async Task Authenticate(HttpContext context, Func<Task> next)
     {
         if (context.Features.Get<IConnectionItemsFeature>()?.Items.TryGetValue(AdminPeerKey, out var tag) == true)
@@ -307,11 +318,12 @@ public sealed partial class BifrostHost : IAsyncDisposable
                 await Problem.WriteAsync(context, 403, "view_only", "This listener is not encrypted: pair through the app.");
                 return;
             }
-            if (_limiter.IsBlocked(asker) || _everyone.IsBlocked("*"))
+            if (_limiter.IsBlocked(asker))
             {
                 await Problem.WriteAsync(context, 429, "too_many_attempts", "Too many failed attempts. Try again later.");
                 return;
             }
+            await SlowDownIfFlooded(context.RequestAborted); // slower, never refused: a valid secret still gets through
             await next();
             if (context.Response.StatusCode == 401)
             {
@@ -356,13 +368,14 @@ public sealed partial class BifrostHost : IAsyncDisposable
         }
 
         var source = LimiterKey(context.Connection.RemoteIpAddress);
-        if (_limiter.IsBlocked(source) || _everyone.IsBlocked("*"))
+        if (_limiter.IsBlocked(source))
         {
             await Problem.WriteAsync(context, 429, "too_many_attempts", "Too many failed attempts. Try again later.");
             return;
         }
         _limiter.RecordFailure(source);
         _everyone.RecordFailure("*");
+        await SlowDownIfFlooded(context.RequestAborted); // a wrong guess in a flood waits; a right token never got here
         LogRefusedToken(Logger(context), source); // D5: the reason goes to the log, the client gets one answer; D7: never the token
         await Unauthorized(context);
     }
