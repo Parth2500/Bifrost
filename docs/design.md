@@ -508,7 +508,7 @@ Each step ends with working, tested software.
    network; the pinning client, which is step 4.
 4. **Client app, first cut.** Pair, pin, show Sleipnir's screens. Run the web view pinning test here.
    **Started** (2026-11-17): the shared .NET client library `Bifrost.Client` (parse the invitation link,
-   pairing by link and by compared code, an HTTP client that pins the key), tested against a real host
+   pairing by link and by compared code, an HTTP client that pins the key, `BifrostClient` for who-am-I, the extension list and an extension's address), tested against a real host
    over loopback. **Left:** the Android app, and the pinning test on each web view engine; both need an
    Android SDK and real devices.
 5. **Install and update.** Signed releases, rollback, install from file.

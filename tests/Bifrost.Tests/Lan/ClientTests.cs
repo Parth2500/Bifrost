@@ -48,6 +48,13 @@ public class ClientTests
         using var pinned = PinnedHttp.Create(paired.Fingerprint, paired.Address);
         pinned.DefaultRequestHeaders.Authorization = new("Bearer", paired.Token);
         Assert.Equal(HttpStatusCode.OK, (await pinned.GetAsync("/api/v1/me")).StatusCode);
+
+        using var client = new BifrostClient(paired);
+        Assert.Equal(home.Admin.PersonId, (await client.GetMeAsync())!.PersonId);
+        Assert.Empty((await client.GetExtensionsAsync())!);
+        Assert.Equal($"https://127.0.0.1:{port}/x/sleipnir/", client.ExtensionAddress("sleipnir").ToString());
+        using var missing = await client.GetFromExtensionAsync("sleipnir", "/index.html");
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode); // no such extension is running, and the call got through pinned and signed in
     }
 
     [Fact]

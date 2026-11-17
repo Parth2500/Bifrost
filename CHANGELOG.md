@@ -15,6 +15,8 @@
   drops the join if the key changes between steps) and `PinnedHttp`, an `HttpClient` that trusts one key
   by its fingerprint and nothing else. The code arithmetic moved to `Bifrost.Core.Api.JoinCode`, shared
   with the server.
+- **`BifrostClient`** (pinned, signed in): `GetMeAsync`, `GetExtensionsAsync`, `ExtensionAddress(name)` and
+  `GetFromExtensionAsync`. A web view must send the token in a header and pin the key itself.
 - Rotating the home key now stops all pairing first and signs devices out before and after the rotation.
 
 ### Added: the view-only browser fallback, `identity rotate`, the polkit prompt (step 3)
