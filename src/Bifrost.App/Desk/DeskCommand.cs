@@ -82,7 +82,7 @@ public sealed class DeskCommand(
 
         using var logs = LoggerFactory.Create(logging => logging.AddConsole().SetMinimumLevel(LogLevel.Information));
         using var http = Client(() => AdminSocket(env, AppPaths.ForCurrentProcess().AdminSocket));
-        await new DeskLoop(http, new NotifySendNotifier(), TimeProvider.System, logs.CreateLogger("Bifrost.Desk")).RunAsync(stop.Token);
+        await new DeskLoop(http, new NotifySendNotifier(int.TryParse(env("BIFROST_DESK_EXPIRE_SECONDS"), out var expire) && expire > 0 ? expire : 0), TimeProvider.System, logs.CreateLogger("Bifrost.Desk")).RunAsync(stop.Token);
         return 0;
     }
 

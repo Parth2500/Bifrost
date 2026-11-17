@@ -246,6 +246,16 @@ public class DeskLoopTests
             File.Delete(own);
         }
     }
+
+    [Fact]
+    public void A_set_expiry_gives_normal_urgency_and_milliseconds()
+    {
+        var arguments = NotifySendNotifier.Arguments("T", "x", YesNo, expireSeconds: 30);
+
+        Assert.Contains("--urgency=normal", arguments);
+        Assert.Contains("--expire-time=30000", arguments);
+        Assert.DoesNotContain("--urgency=critical", arguments);
+    }
 }
 
 public sealed class DeskCommandTests : IDisposable
@@ -329,4 +339,5 @@ public sealed class DeskCommandTests : IDisposable
     {
         Assert.Equal(64, await Command().RunAsync(["frobnicate"]));
     }
+
 }

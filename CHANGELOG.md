@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `bifrost desk`: `BIFROST_DESK_EXPIRE_SECONDS` sets how long a notification stays (default 0: until answered).
+  For the installed unit use `systemctl --user edit bifrost-desk` and add `Environment=BIFROST_DESK_EXPIRE_SECONDS=60`.
+
 ### Added: the home key and HTTPS on the home network (step 3, first part)
 
 - **Home key.** An ECDSA P-256 key and a 10-year self-signed certificate, made on first use as

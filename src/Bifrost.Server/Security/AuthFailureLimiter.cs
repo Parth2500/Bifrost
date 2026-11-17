@@ -18,7 +18,7 @@ public sealed class AuthFailureLimiter(int maxFailures, TimeSpan window, TimePro
     {
         lock (_gate)
         {
-            if (_failures.Count >= MaxSources) Sweep();
+            if (_failures.Count >= MaxSources && time.GetUtcNow() - _lastSweep >= window) Sweep();
             var queue = Prune(source);
             // shortcut: past the cap a new source is not tracked; the 20 failures/minute budget then
             // cannot block it, but memory stays bounded. Upgrade with a global LAN failure budget.
@@ -30,8 +30,12 @@ public sealed class AuthFailureLimiter(int maxFailures, TimeSpan window, TimePro
 
     private const int MaxSources = 10_000;
 
+    private DateTimeOffset _lastSweep;
+
+    // At most once per window, so a full table cannot make every failure cost O(n) under the lock.
     private void Sweep()
     {
+        _lastSweep = time.GetUtcNow();
         foreach (var source in _failures.Keys.ToList()) Prune(source);
     }
 
