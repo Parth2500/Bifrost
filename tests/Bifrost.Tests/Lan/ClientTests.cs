@@ -54,6 +54,10 @@ public class ClientTests
         Assert.Empty((await client.GetExtensionsAsync())!);
         Assert.Equal($"https://127.0.0.1:{port}/x/sleipnir/", client.ExtensionAddress("sleipnir").ToString());
         using var missing = await client.GetFromExtensionAsync("sleipnir", "/index.html");
+        foreach (var bad in new[] { "http://evil.example/", "https://evil.example/", "../../api/v1/people", "..\\x" })
+        {
+            await Assert.ThrowsAsync<ArgumentException>(() => client.GetFromExtensionAsync("sleipnir", bad)); // the token goes nowhere else
+        }
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode); // no such extension is running, and the call got through pinned and signed in
     }
 

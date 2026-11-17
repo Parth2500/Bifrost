@@ -42,8 +42,20 @@ public sealed class BifrostClient : IDisposable
     }
 
     /// <summary>A request the device may send to an extension's screens, already pinned and signed in.</summary>
-    public Task<HttpResponseMessage> GetFromExtensionAsync(string name, string path, CancellationToken ct = default) =>
-        _http.GetAsync(new Uri(ExtensionAddress(name), path.TrimStart('/')), ct);
+    /// <exception cref="ArgumentException"><paramref name="path"/> would leave the extension (another host, scheme or folder).</exception>
+    public Task<HttpResponseMessage> GetFromExtensionAsync(string name, string path, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        var root = ExtensionAddress(name);
+        var target = new Uri(root, path.TrimStart('/'));
+        // The token travels with this request, so it may go nowhere but into the same extension on the same home.
+        if (target.Scheme != Uri.UriSchemeHttps || target.Authority != root.Authority
+            || !target.AbsolutePath.StartsWith(root.AbsolutePath, StringComparison.Ordinal) || path.Contains('\\', StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The path leaves the extension.", nameof(path));
+        }
+        return _http.GetAsync(target, ct);
+    }
 
     public void Dispose() => _http.Dispose();
 }
