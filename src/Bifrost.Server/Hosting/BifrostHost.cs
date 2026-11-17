@@ -217,11 +217,13 @@ public sealed partial class BifrostHost : IAsyncDisposable
             api.MapPost("/identity/rotate", async (HttpContext c) =>
             {
                 if (!c.Principal().IsLocal) return Problem.Create(403, "host_only", "Only this computer's admin can rotate the home key.");
-                // Sign everyone out first, then stop all pairing, then rotate: a failure in between leaves
-                // the key unchanged and the devices signed out, never a new key with devices still in.
+                // Stop all pairing first, so no new token is issued from here on; sign everyone out; rotate;
+                // then sign out again for a pairing that was already in flight when the flag went up.
+                // A failure in between leaves the key unchanged and the devices signed out, never the reverse.
+                _rotationPending = true;
                 var revoked = await _people.RevokeAllRemoteAsync(c.Principal());
-                _rotationPending = true; // until the restart nobody can pair, so no token is issued on the old key
                 var fingerprint = rotate();
+                revoked += await _people.RevokeAllRemoteAsync(c.Principal());
                 return Results.Ok(new { fingerprint, revokedDevices = revoked });
             });
         }

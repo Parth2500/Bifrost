@@ -506,6 +506,10 @@ Each step ends with working, tested software.
    mDNS discovery; the QR image (a screen draws it); the audit log for path B; a real device on a real
    network; the pinning client, which is step 4.
 4. **Client app, first cut.** Pair, pin, show Sleipnir's screens. Run the web view pinning test here.
+   **Started** (2026-11-17): the shared .NET client library `Bifrost.Client` (parse the invitation link,
+   pairing by link and by compared code, an HTTP client that pins the key), tested against a real host
+   over loopback. **Left:** the Android app, and the pinning test on each web view engine; both need an
+   Android SDK and real devices.
 5. **Install and update.** Signed releases, rollback, install from file.
 6. **Folders and events.** Per-person folders, visibility, publish and subscribe. Saga, when it
    exists, is the second extension and the test of this interface.

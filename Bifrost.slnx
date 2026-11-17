@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Bifrost.Core/Bifrost.Core.csproj" />
+    <Project Path="src/Bifrost.Client/Bifrost.Client.csproj" />
     <Project Path="src/Bifrost.Server/Bifrost.Server.csproj" />
     <Project Path="src/Bifrost.App/Bifrost.App.csproj" />
   </Folder>

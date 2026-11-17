@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added: the shared client library (step 4, first part)
+
+- **`Bifrost.Client`**: `PairingLink.Parse`, `BifrostPairing.PairWithLinkAsync` (the secret goes only to
+  a server whose key matches the link), `BifrostPairing.JoinAsync` (shows the code, waits for the admin,
+  drops the join if the key changes between steps) and `PinnedHttp`, an `HttpClient` that trusts one key
+  by its fingerprint and nothing else. The code arithmetic moved to `Bifrost.Core.Api.JoinCode`, shared
+  with the server.
+- Rotating the home key now stops all pairing first and signs devices out before and after the rotation.
+
 ### Added: the view-only browser fallback, `identity rotate`, the polkit prompt (step 3)
 
 - **Browser fallback.** `"fallbackPort": 7782` in `lan.json` opens a plain-HTTP listener, off by default.

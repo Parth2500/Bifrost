@@ -68,11 +68,8 @@ public sealed class JoinService(PeopleService people, byte[] fingerprint, TimePr
     }
 
     /// <summary>What the device computes from the fingerprint it saw, and the host shows the admin.</summary>
-    public static string Code(byte[] fingerprint, string deviceNonce, string serverNonce)
-    {
-        var hash = SHA256.HashData([.. fingerprint, .. Encoding.UTF8.GetBytes($"|{deviceNonce}|{serverNonce}")]);
-        return (BitConverter.ToUInt32(hash, 0) % 100_000_000).ToString("D8", System.Globalization.CultureInfo.InvariantCulture);
-    }
+    public static string Code(byte[] fingerprint, string deviceNonce, string serverNonce) =>
+        Bifrost.Core.Api.JoinCode.Compute(fingerprint, deviceNonce, serverNonce);
 
     public IReadOnlyList<Request> Pending()
     {
