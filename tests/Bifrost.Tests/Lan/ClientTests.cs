@@ -71,6 +71,8 @@ public class ClientTests
         await Assert.ThrowsAsync<ArgumentException>(() => client.SendToExtensionAsync("sleipnir", "POST", "http://evil.example/", "{}"));
         await Assert.ThrowsAsync<ArgumentException>(() => client.SendToExtensionAsync("sleipnir", "POST", "%2e%2e/api/v1/people", "{}"));
         Assert.Throws<ArgumentException>(() => client.ExtensionAddress(".."));
+        Assert.True(await client.RevokeSelfAsync()); // forgetting the home signs the device out there too
+        Assert.Equal(HttpStatusCode.Unauthorized, (await pinned.GetAsync("/api/v1/me")).StatusCode);
         Assert.Throws<ArgumentException>(() => client.ExtensionAddress("a/b"));
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode); // no such extension is running, and the call got through pinned and signed in
     }

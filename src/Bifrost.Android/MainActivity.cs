@@ -89,6 +89,20 @@ public sealed class MainActivity : Activity
         ShowArea(Area.HomePages);
     }
 
+    /// <summary>The person chose to forget: sign this device out on the home first, so its token stops working, then forget it here.</summary>
+    private async Task ForgetAndSignOutAsync()
+    {
+        try
+        {
+            if (_client is { } client) await client.RevokeSelfAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        catch (Exception e) when (e is HttpRequestException or TimeoutException or ArgumentException)
+        {
+            Toast.MakeText(this, "The home could not be reached: ask the admin to sign this device out.", ToastLength.Long)?.Show();
+        }
+        ForgetHome();
+    }
+
     /// <summary>Drops the pairing and goes back to the pairing screen: the person chose to, or the home refused our token.</summary>
     private void ForgetHome()
     {
@@ -118,7 +132,7 @@ public sealed class MainActivity : Activity
         var forget = new Button(this) { Text = "Forget" };
         forget.Click += (_, _) => new AlertDialog.Builder(this)!
             .SetTitle("Forget this home?")!.SetMessage("This device will need a new invitation to pair again.")!
-            .SetPositiveButton("Forget", (_, _) => ForgetHome())!.SetNegativeButton("Cancel", (_, _) => { })!.Show();
+            .SetPositiveButton("Forget", async (_, _) => await ForgetAndSignOutAsync())!.SetNegativeButton("Cancel", (_, _) => { })!.Show();
         tabs.AddView(forget, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
         var column = new LinearLayout(this) { Orientation = Orientation.Vertical };
         // Newer Android draws behind the status and title bars; leave room for them.
