@@ -5,6 +5,7 @@
 //   FAKE_MODE=crash           exit 3 at once
 //   FAKE_MODE=hang            never open the socket
 //   FAKE_MODE=exit-after=<s>  echo, then exit 0 after <s> seconds
+//   FAKE_MODE=page            also serve a self-testing web page at / (for trying a client's web view)
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.Features;
 
@@ -26,6 +27,29 @@ var builder = WebApplication.CreateSlimBuilder();
 builder.Logging.ClearProviders();
 builder.WebHost.ConfigureKestrel(k => k.ListenUnixSocket(socket));
 var app = builder.Build();
+app.UseWebSockets();
+
+if (mode == "page")
+{
+    app.MapGet("/", () => Results.Content(Page.Html, "text/html; charset=utf-8"));
+    app.MapGet("/index.html", () => Results.Content(Page.Html, "text/html; charset=utf-8"));
+    app.MapGet("/app.js", () => Results.Content(Page.Script, "text/javascript; charset=utf-8"));
+    app.MapGet("/style.css", () => Results.Content(Page.Style, "text/css; charset=utf-8"));
+    app.MapGet("/pixel.svg", () => Results.Content("<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><rect width='8' height='8' fill='green'/></svg>", "image/svg+xml"));
+    app.MapGet("/data.json", () => Results.Json(new { hello = "from the extension" }));
+    // The page reports with a GET: a web view that hands every request to the app cannot send a body.
+    app.MapGet("/report", async (string r) => { await File.WriteAllTextAsync(Path.Combine(dataDir, "page-report.json"), r); return Results.NoContent(); });
+    app.Map("/ws", async (HttpContext context) =>
+    {
+        if (!context.WebSockets.IsWebSocketRequest) return Results.BadRequest();
+        using var ws = await context.WebSockets.AcceptWebSocketAsync();
+        var buffer = new byte[1024];
+        var received = await ws.ReceiveAsync(buffer, context.RequestAborted);
+        await ws.SendAsync(buffer.AsMemory(0, received.Count), received.MessageType, true, context.RequestAborted);
+        await ws.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, "done", context.RequestAborted);
+        return Results.Empty;
+    });
+}
 
 app.MapGet("/big", async (HttpContext context, int mb) =>
 {
