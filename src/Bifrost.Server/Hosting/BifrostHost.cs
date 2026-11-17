@@ -35,6 +35,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
     private readonly QuestionService? _questions;
     private readonly PairingService _pairing;
     private JoinService? _join;
+    private volatile bool _rotationPending;
     private readonly AuthFailureLimiter _limiter;
     private readonly AuthFailureLimiter _joinLimiter;
     private readonly TimeProvider _time;
@@ -216,8 +217,11 @@ public sealed partial class BifrostHost : IAsyncDisposable
             api.MapPost("/identity/rotate", async (HttpContext c) =>
             {
                 if (!c.Principal().IsLocal) return Problem.Create(403, "host_only", "Only this computer's admin can rotate the home key.");
+                // Sign everyone out first, then stop all pairing, then rotate: a failure in between leaves
+                // the key unchanged and the devices signed out, never a new key with devices still in.
+                var revoked = await _people.RevokeAllRemoteAsync(c.Principal());
+                _rotationPending = true; // until the restart nobody can pair, so no token is issued on the old key
                 var fingerprint = rotate();
-                var revoked = await _people.RevokeAllRemoteAsync(c.Principal()); // open invitations die with the restart
                 return Results.Ok(new { fingerprint, revokedDevices = revoked });
             });
         }
@@ -286,6 +290,11 @@ public sealed partial class BifrostHost : IAsyncDisposable
             && (context.Request.Path == PairingEndpoints.PairPath || context.Request.Path.StartsWithSegments(JoinEndpoints.PublicPrefix)))
         {
             var asker = LimiterKey(context.Connection.RemoteIpAddress);
+            if (_rotationPending)
+            {
+                await Problem.WriteAsync(context, 503, "restart_pending", "The home key was rotated. Pairing resumes when Bifröst restarts.");
+                return;
+            }
             if (IsFallback(context) && context.Request.Path == PairingEndpoints.PairPath)
             {
                 // An invitation secret and an app token must not cross plain HTTP.
