@@ -67,18 +67,19 @@ public sealed partial class BifrostClient : IDisposable
     }
 
     /// <summary>
-    /// For a web view that hands every request to the app: GET one address under <c>/x/</c> on this home,
-    /// pinned and signed in. Anything else (another host, scheme or folder) is refused before it is sent.
+    /// For a web view that hands every request to the app: GET one address inside <paramref name="extension"/>'s
+    /// screens on this home, pinned and signed in. Anything else (another host, scheme, folder or extension)
+    /// is refused before it is sent.
     /// </summary>
-    /// <exception cref="ArgumentException">The address is not on this home's extension screens.</exception>
-    public Task<HttpResponseMessage> GetHomeAsync(Uri address, IReadOnlyDictionary<string, string>? headers = null, CancellationToken ct = default)
+    /// <exception cref="ArgumentException">The address is not inside that extension.</exception>
+    public Task<HttpResponseMessage> GetHomeAsync(string extension, Uri address, IReadOnlyDictionary<string, string>? headers = null, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(address);
-        var home = new Uri($"https://{Home.Address}/");
-        if (address.Scheme != Uri.UriSchemeHttps || address.Authority != home.Authority || !address.AbsolutePath.StartsWith("/x/", StringComparison.Ordinal)
+        var root = ExtensionAddress(extension);
+        if (address.Scheme != Uri.UriSchemeHttps || address.Authority != root.Authority || !address.AbsolutePath.StartsWith(root.AbsolutePath, StringComparison.Ordinal)
             || address.AbsolutePath.Split('/').Any(segment => Uri.UnescapeDataString(segment) is "." or ".."))
         {
-            throw new ArgumentException("Not an extension screen of this home.", nameof(address));
+            throw new ArgumentException("Not a screen of this extension.", nameof(address));
         }
         using var request = new HttpRequestMessage(HttpMethod.Get, address);
         foreach (var (name, value) in headers ?? new Dictionary<string, string>())

@@ -16,6 +16,7 @@ namespace Bifrost.Android;
 public sealed class MainActivity : Activity
 {
     private const string Store = "home";
+    private const string Extension = "sleipnir";
     private BifrostClient? _client;
 
     protected override void OnCreate(Bundle? savedInstanceState)
@@ -29,13 +30,28 @@ public sealed class MainActivity : Activity
     protected override void OnNewIntent(Intent? intent)
     {
         base.OnNewIntent(intent);
-        if (intent?.DataString is { } link) ShowPairing(link);
+        // A link from another app must never replace a pairing: a paired device ignores it (forget the home first).
+        if (_client is null && intent?.DataString is { } link) ShowPairing(link);
     }
 
     private void ShowPairing(string? link)
     {
         var field = new EditText(this) { Hint = "bifrost://pair?…", Text = link };
         var status = new TextView(this);
+        // Say which home and which key the link names, so the person can check before pairing.
+        void Describe()
+        {
+            try
+            {
+                var parsed = PairingLink.Parse(field.Text ?? "");
+                status.Text = $"This link pairs with {parsed.HomeName} at {parsed.Address}\nKey {parsed.Fingerprint[..16]}…\nPair only if that is your home.";
+            }
+            catch (FormatException)
+            {
+                status.Text = "";
+            }
+        }
+        field.TextChanged += (_, _) => Describe();
         var pair = new Button(this) { Text = "Pair" };
         pair.Click += async (_, _) =>
         {
@@ -67,9 +83,11 @@ public sealed class MainActivity : Activity
         web.Settings.JavaScriptEnabled = true;
         web.Settings.AllowFileAccess = false;
         web.Settings.AllowContentAccess = false;
-        web.SetWebViewClient(new PinnedClient(_client));
+        // A service worker would fetch outside this app's client; none is allowed to.
+        ServiceWorkerController.Instance.SetServiceWorkerClient(new RefusingWorkerClient());
+        web.SetWebViewClient(new PinnedClient(_client, Extension));
         SetContentView(web);
-        web.LoadUrl(_client.ExtensionAddress("sleipnir").ToString());
+        web.LoadUrl(_client.ExtensionAddress(Extension).ToString());
     }
 
     // shortcut: plain private preferences, readable by anyone with root; move to the Android Keystore before release.
@@ -84,17 +102,35 @@ public sealed class MainActivity : Activity
     private void Save(PairedHome h) => GetSharedPreferences(Store, FileCreationMode.Private)!.Edit()!
         .PutString("address", h.Address)!.PutString("fp", h.Fingerprint)!.PutString("token", h.Token)!.PutString("device", h.DeviceId.ToString())!.Apply();
 
-    private sealed class PinnedClient(BifrostClient client) : WebViewClient
+    private sealed class RefusingWorkerClient : ServiceWorkerClient
     {
+        public override WebResourceResponse? ShouldInterceptRequest(IWebResourceRequest? request) => PinnedClient.Refused();
+    }
+
+    private sealed class PinnedClient(BifrostClient client, string extension) : WebViewClient
+    {
+        // What a page may load and send: only itself. Scripts from elsewhere would be refused above anyway;
+        // this closes fetch, forms, frames and images to other hosts in the page's own eyes too.
+        private static readonly Dictionary<string, string> PageRules = new()
+        {
+            ["Content-Security-Policy"] = "connect-src 'self'; form-action 'self'; frame-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; base-uri 'self'",
+        };
+
+        // A script cannot send the person to another site from inside this app.
+        public override bool ShouldOverrideUrlLoading(WebView? view, IWebResourceRequest? request) =>
+            !(Uri.TryCreate(request?.Url?.ToString(), UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps
+              && u.Authority == client.ExtensionAddress(extension).Authority
+              && u.AbsolutePath.StartsWith(client.ExtensionAddress(extension).AbsolutePath, StringComparison.Ordinal));
+
         public override WebResourceResponse? ShouldInterceptRequest(WebView? view, IWebResourceRequest? request)
         {
             if (request?.Url?.ToString() is not { } url || !Uri.TryCreate(url, UriKind.Absolute, out var address)) return Refused();
             try
             {
-                var response = client.GetHomeAsync(address, request.RequestHeaders?.ToDictionary(h => h.Key, h => h.Value)).GetAwaiter().GetResult();
+                var response = client.GetHomeAsync(extension, address, request.RequestHeaders?.ToDictionary(h => h.Key, h => h.Value)).GetAwaiter().GetResult();
                 var type = response.Content.Headers.ContentType;
                 return new WebResourceResponse(type?.MediaType ?? "application/octet-stream", type?.CharSet ?? "utf-8", (int)response.StatusCode,
-                    response.ReasonPhrase ?? "OK", new Dictionary<string, string>(), response.Content.ReadAsStream());
+                    response.ReasonPhrase ?? "OK", new Dictionary<string, string>(PageRules), response.Content.ReadAsStream());
             }
             catch (Exception e) when (e is ArgumentException or HttpRequestException)
             {
@@ -102,7 +138,7 @@ public sealed class MainActivity : Activity
             }
         }
 
-        private static WebResourceResponse Refused() =>
+        internal static WebResourceResponse Refused() =>
             new("text/plain", "utf-8", 403, "Forbidden", new Dictionary<string, string>(), new MemoryStream());
     }
 }

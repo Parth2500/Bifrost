@@ -58,6 +58,8 @@ public class ClientTests
         {
             await Assert.ThrowsAsync<ArgumentException>(() => client.GetFromExtensionAsync("sleipnir", bad)); // the token goes nowhere else
         }
+        await Assert.ThrowsAsync<ArgumentException>(() => client.GetHomeAsync("sleipnir", new Uri($"https://127.0.0.1:{port}/x/saga/"))); // a sibling extension
+        await Assert.ThrowsAsync<ArgumentException>(() => client.GetHomeAsync("sleipnir", new Uri($"https://127.0.0.1:{port}/api/v1/people")));
         Assert.Throws<ArgumentException>(() => client.ExtensionAddress(".."));
         Assert.Throws<ArgumentException>(() => client.ExtensionAddress("a/b"));
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode); // no such extension is running, and the call got through pinned and signed in
