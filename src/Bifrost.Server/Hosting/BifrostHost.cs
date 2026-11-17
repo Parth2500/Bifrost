@@ -155,6 +155,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
             kestrel.Limits.MaxRequestBodySize = 1024 * 1024;
             kestrel.Listen(IPAddress.Loopback, port);
             if (withIPv6) kestrel.Listen(IPAddress.IPv6Loopback, port);
+            if (_options.Lan is { } lan) kestrel.Listen(IPAddress.IPv6Any, lan.Port, listen => listen.UseHttps(lan.Certificate)); // dual-stack
             if (_options.Admin is { } admin)
             {
                 var folder = Path.GetDirectoryName(admin.Path)!;
@@ -220,12 +221,22 @@ public sealed partial class BifrostHost : IAsyncDisposable
 
     private static async Task RejectForeignHosts(HttpContext context, Func<Task> next)
     {
-        if (!AllowedHosts.Contains(context.Request.Host.Host, StringComparer.OrdinalIgnoreCase))
+        if (!AllowedHosts.Contains(context.Request.Host.Host, StringComparer.OrdinalIgnoreCase) && !IsOwnLanName(context.Request.Host.Host))
         {
-            await Problem.WriteAsync(context, 400, "host_not_allowed", "This server only answers to its loopback names.");
+            await Problem.WriteAsync(context, 400, "host_not_allowed", "This server only answers to its own names.");
             return;
         }
         await next();
+    }
+
+    /// <summary>The home's own LAN names and addresses (design §6.4); any other Host is a rebinding attempt.</summary>
+    private static bool IsOwnLanName(string host)
+    {
+        if (host.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase)
+            || host.Equals(Environment.MachineName + ".local", StringComparison.OrdinalIgnoreCase)) return true;
+        if (!IPAddress.TryParse(host.Trim('[', ']'), out var address)) return false;
+        return System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+            .SelectMany(n => n.GetIPProperties().UnicastAddresses).Any(a => a.Address.Equals(address));
     }
 
     private async Task Authenticate(HttpContext context, Func<Task> next)

@@ -7,6 +7,7 @@ using Bifrost.Server.Hosting;
 using Bifrost.Server.People;
 using Bifrost.Server.Persistence;
 using Bifrost.Server.Questions;
+using Bifrost.Server.Security;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -26,7 +27,7 @@ internal static class DaemonCommand
         {
             return await RunCoreAsync();
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or DbUpdateException or SqliteException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or DbUpdateException or SqliteException or System.Text.Json.JsonException)
         {
             await Console.Error.WriteLineAsync($"Bifröst could not start: {e.Message}");
             return StartFailureExitCode;
@@ -87,7 +88,10 @@ internal static class DaemonCommand
             throw new IOException($"the runtime folder's path is too long for a socket ({tooLong}).");
         }
 
-        await using var host = BifrostHost.Create(new BifrostHostOptions(Admin: new AdminSocketOptions(paths.AdminSocket, admin.Uid)), people, TimeProvider.System, extensions: extensions, questions: questions);
+        // The home network is off until the admin asks: a lan.json with {"enabled": true, "port": 7781} in the settings folder.
+        using var homeKey = LanEnabled(paths.Settings, out var lanPort) ? HomeKey.LoadOrCreate(paths.Data) : null;
+        var lan = homeKey is null ? null : new LanOptions(homeKey.Certificate, lanPort);
+        await using var host = BifrostHost.Create(new BifrostHostOptions(Admin: new AdminSocketOptions(paths.AdminSocket, admin.Uid), Lan: lan), people, TimeProvider.System, extensions: extensions, questions: questions);
         await host.StartAsync();
         try
         {
@@ -96,6 +100,7 @@ internal static class DaemonCommand
             await extensions.StartAllAsync();
             DaemonInfo.Write(paths.Runtime, new DaemonInfo(host.Port, Environment.ProcessId, Version));
             Console.WriteLine($"Bifröst listening on http://127.0.0.1:{host.Port} and, for {admin.Name}, on {paths.AdminSocket}");
+            if (homeKey is not null) Console.WriteLine($"Home network: https://0.0.0.0:{lanPort}, home key {homeKey.Fingerprint}");
             try
             {
                 await host.WaitForShutdownAsync(stop.Token);
@@ -113,6 +118,16 @@ internal static class DaemonCommand
             await extensions.StopAllAsync();
         }
         return 0;
+    }
+
+    private static bool LanEnabled(string settings, out int port)
+    {
+        port = LanOptions.DefaultPort;
+        var path = Path.Combine(settings, "lan.json");
+        if (!File.Exists(path)) return false;
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+        if (json.RootElement.TryGetProperty("port", out var p) && p.TryGetInt32(out var n) && n is > 0 and < 65536) port = n;
+        return json.RootElement.TryGetProperty("enabled", out var e) && e.ValueKind == System.Text.Json.JsonValueKind.True;
     }
 
     private static string Version => typeof(DaemonCommand).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";

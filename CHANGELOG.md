@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added: the home key and HTTPS on the home network (step 3, first part)
+
+- **Home key.** An ECDSA P-256 key and a 10-year self-signed certificate, made on first use as
+  `home-key.pfx` in the data folder (owner-only). Its fingerprint is SHA-256 over the public key.
+- **Home network listener.** HTTPS on all interfaces, port 7781, **off** until `lan.json` in the
+  settings folder says `{"enabled": true, "port": 7781}`. The `Host` check also accepts the machine's
+  own name, `<name>.local` and its own addresses; anything else is still refused.
+- Not yet: pairing, so no device has a token on this listener yet; mDNS; `bifrost identity rotate`
+  (the rotation code exists, the command does not).
+
 ### Added: asking the admin (step 2d)
 
 - **Questions.** Bifröst or an extension asks the admin a question with 2 to 4 choices and an
