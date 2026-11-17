@@ -7,7 +7,7 @@ using Bifrost.Core.Api;
 namespace Bifrost.Client;
 
 /// <summary>A paired device talking to its home: every call is pinned to the home key and carries the device token.</summary>
-public sealed class BifrostClient : IDisposable
+public sealed partial class BifrostClient : IDisposable
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -24,6 +24,9 @@ public sealed class BifrostClient : IDisposable
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", home.Token);
     }
 
+    [System.Text.RegularExpressions.GeneratedRegex("^[a-z0-9-]+$")]
+    private static partial System.Text.RegularExpressions.Regex ValidName();
+
     public PairedHome Home { get; }
 
     public Task<MeDto?> GetMeAsync(CancellationToken ct = default) => _http.GetFromJsonAsync<MeDto>("/api/v1/me", Json, ct);
@@ -37,7 +40,7 @@ public sealed class BifrostClient : IDisposable
     /// </summary>
     public Uri ExtensionAddress(string name)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (!ValidName().IsMatch(name)) throw new ArgumentException("An extension's name is lowercase letters, digits and dashes.", nameof(name));
         return new Uri($"https://{Home.Address}/x/{Uri.EscapeDataString(name)}/");
     }
 
@@ -47,6 +50,12 @@ public sealed class BifrostClient : IDisposable
     {
         ArgumentNullException.ThrowIfNull(path);
         var root = ExtensionAddress(name);
+        // A dot segment, spelled plainly or percent-encoded (%2e%2e), would climb out of the extension.
+        var beforeQuery = path.Split('?', '#')[0];
+        if (Uri.UnescapeDataString(beforeQuery).Split('/').Any(segment => segment is "." or ".."))
+        {
+            throw new ArgumentException("The path leaves the extension.", nameof(path));
+        }
         var target = new Uri(root, path.TrimStart('/'));
         // The token travels with this request, so it may go nowhere but into the same extension on the same home.
         if (target.Scheme != Uri.UriSchemeHttps || target.Authority != root.Authority
