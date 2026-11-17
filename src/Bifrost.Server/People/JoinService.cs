@@ -16,6 +16,9 @@ public sealed class JoinService(PeopleService people, byte[] fingerprint, TimePr
     public const int MaxPending = 5;
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
 
+    /// <summary>A real device reveals its nonce at once; one that does not frees its place quickly.</summary>
+    public static readonly TimeSpan RevealWithin = TimeSpan.FromSeconds(30);
+
     public sealed record Request(Guid Id, string Name, string Platform, string Code, DateTimeOffset Expires);
 
     private sealed class Entry(string name, string platform, DateTimeOffset expires, byte[] commit, string serverNonce, string source)
@@ -23,7 +26,7 @@ public sealed class JoinService(PeopleService people, byte[] fingerprint, TimePr
         public string Source { get; } = source;
         public string Name { get; } = name;
         public string Platform { get; } = platform;
-        public DateTimeOffset Expires { get; } = expires;
+        public DateTimeOffset Expires { get; set; } = expires;
         public byte[] DeviceNonceHash { get; } = commit;
         public string ServerNonce { get; } = serverNonce;
         public Request? View { get; set; } // set when the nonce is revealed
@@ -44,7 +47,7 @@ public sealed class JoinService(PeopleService people, byte[] fingerprint, TimePr
             Purge();
             // One waiting request per source, so one machine cannot fill the five places.
             if (_entries.Count >= MaxPending || _entries.Values.Any(e => e.Source == source)) return null;
-            _entries[id] = new Entry(name, platform, time.GetUtcNow() + Lifetime, commit, serverNonce, source);
+            _entries[id] = new Entry(name, platform, time.GetUtcNow() + RevealWithin, commit, serverNonce, source);
         }
         return (id, serverNonce);
     }
@@ -57,6 +60,7 @@ public sealed class JoinService(PeopleService people, byte[] fingerprint, TimePr
             Purge();
             if (!_entries.TryGetValue(id, out var e) || e.View is not null
                 || !CryptographicOperations.FixedTimeEquals(e.DeviceNonceHash, Hash(deviceNonce))) return false;
+            e.Expires = time.GetUtcNow() + Lifetime;
             e.View = new Request(id, e.Name, e.Platform, Code(fingerprint, deviceNonce, e.ServerNonce), e.Expires);
             return true;
         }
