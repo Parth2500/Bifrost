@@ -13,6 +13,8 @@
     <!-- The generated Android code is not ours to keep warning-free. -->
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <!-- A debug APK installed by hand has no tool to push its assemblies, and dies at launch without this. -->
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
   </PropertyGroup>
 
   <ItemGroup>
