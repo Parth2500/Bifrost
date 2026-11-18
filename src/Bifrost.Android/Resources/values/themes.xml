@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <style name="Theme.Bifrost" parent="Theme.Material3.DayNight.NoActionBar">
+    <item name="colorPrimary">@color/bifrost_ink</item>
+    <item name="colorOnPrimary">@color/bifrost_ground</item>
+    <item name="colorSecondaryContainer">@color/bifrost_teal</item>
+    <item name="colorOnSecondaryContainer">@color/bifrost_ink</item>
+    <item name="colorSurface">@color/bifrost_ground</item>
+    <item name="colorOnSurface">@color/bifrost_ink</item>
+    <item name="colorSurfaceContainer">@color/bifrost_section</item>
+    <item name="colorOutline">@color/bifrost_outline</item>
+    <item name="colorError">@color/bifrost_error</item>
+    <item name="android:windowBackground">@color/bifrost_ground</item>
+    <item name="android:statusBarColor">@color/bifrost_teal</item>
+    <item name="android:windowLightStatusBar">true</item>
+    <item name="colorSurfaceContainerHigh">@color/bifrost_section</item>
+    <item name="materialAlertDialogTheme">@style/ThemeOverlay.Bifrost.Dialog</item>
+  </style>
+  <style name="ThemeOverlay.Bifrost.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+    <item name="colorSurfaceContainerHigh">@color/bifrost_section</item>
+  </style>
+  <!-- The bar is teal in both schemes, so its icons are ink in both. -->
+  <style name="ThemeOverlay.Bifrost.Bar" parent="">
+    <item name="colorControlNormal">@color/bifrost_ink</item>
+  </style>
+</resources>

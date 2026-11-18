@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Dark is a designed scheme: ink ground, teal accent; the top bar stays teal in both. -->
+  <style name="Theme.Bifrost" parent="Theme.Material3.DayNight.NoActionBar">
+    <item name="colorPrimary">@color/bifrost_teal</item>
+    <item name="colorOnPrimary">@color/bifrost_ink</item>
+    <item name="colorSecondaryContainer">@color/bifrost_teal</item>
+    <item name="colorOnSecondaryContainer">@color/bifrost_ink</item>
+    <item name="colorSurface">@color/bifrost_ground</item>
+    <item name="colorOnSurface">#E4EEED</item>
+    <item name="colorSurfaceContainer">@color/bifrost_section</item>
+    <item name="colorOutline">@color/bifrost_outline</item>
+    <item name="colorError">@color/bifrost_error</item>
+    <item name="android:windowBackground">@color/bifrost_ground</item>
+    <item name="android:statusBarColor">@color/bifrost_teal</item>
+    <item name="android:windowLightStatusBar">true</item>
+    <item name="colorSurfaceContainerHigh">@color/bifrost_section</item>
+    <item name="materialAlertDialogTheme">@style/ThemeOverlay.Bifrost.Dialog</item>
+  </style>
+</resources>

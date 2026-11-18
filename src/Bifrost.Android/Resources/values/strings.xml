@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">Bifröst</string>
+  <string name="nav_home">Home</string>
+  <string name="nav_downloads">Downloads</string>
+  <string name="forget_home">Forget this home</string>
+</resources>

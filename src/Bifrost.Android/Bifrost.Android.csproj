@@ -7,18 +7,43 @@
     <OutputType>Exe</OutputType>
     <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
     <ApplicationId>org.bifrost.client</ApplicationId>
-    <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>2</ApplicationVersion>
+    <ApplicationDisplayVersion>0.2.0</ApplicationDisplayVersion>
     <RootNamespace>Bifrost.Android</RootNamespace>
     <!-- The generated Android code is not ours to keep warning-free. -->
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <!-- This project type does not look in Platforms/Android: without this line the icon, label, INTERNET permission and
+         the backup and clear-text settings in that file are all ignored, and a release build cannot reach the network. -->
+    <AndroidManifest>Platforms/Android/AndroidManifest.xml</AndroidManifest>
     <!-- A debug APK installed by hand has no tool to push its assemblies, and dies at launch without this. -->
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
   </PropertyGroup>
 
+  <!-- A phone is arm64. Release builds only that, which is what takes the app from about 73 MB (debug, arm64 and
+       x86_64 side by side) to about 13 MB. Debug keeps both so the emulator works. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>android-arm64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <!-- A release is signed with the owner's own key, named by environment variables so that no key or password is ever in
+       the repository: BIFROST_ANDROID_KEYSTORE (the file), BIFROST_ANDROID_STORE_PASS and BIFROST_ANDROID_KEY_PASS.
+       Without them the debug key signs, which is fine for a phone on your desk and not for a release. -->
+  <PropertyGroup Condition="'$(BIFROST_ANDROID_KEYSTORE)' != ''">
+    <AndroidKeyStore>true</AndroidKeyStore>
+    <AndroidSigningKeyStore>$(BIFROST_ANDROID_KEYSTORE)</AndroidSigningKeyStore>
+    <AndroidSigningKeyAlias>bifrost</AndroidSigningKeyAlias>
+    <AndroidSigningStorePass>env:BIFROST_ANDROID_STORE_PASS</AndroidSigningStorePass>
+    <AndroidSigningKeyPass>env:BIFROST_ANDROID_KEY_PASS</AndroidSigningKeyPass>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="../Bifrost.Client/Bifrost.Client.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Xamarin.Google.Android.Material" Version="1.14.0.6" />
+    <PackageReference Include="Xamarin.GooglePlayServices.Code.Scanner" Version="116.1.0.17" />
   </ItemGroup>
 
 </Project>

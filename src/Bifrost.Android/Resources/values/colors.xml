@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Logo palette: teal #79B9B5 and ink #111820. Light scheme: pale teal ground, tonal teal sections. -->
+  <color name="bifrost_teal">#79B9B5</color>
+  <color name="bifrost_ink">#111820</color>
+  <color name="bifrost_bar_text_2">#1F3B3A</color>
+  <color name="bifrost_ground">#EAF3F2</color>
+  <color name="bifrost_section">#D3E7E5</color>
+  <color name="bifrost_outline">#4D6563</color>
+  <color name="bifrost_amber">#F3D9A4</color>
+  <color name="bifrost_on_amber">#3B2A00</color>
+  <color name="bifrost_error">#B3261E</color>
+  <color name="bifrost_edge">#99FFFFFF</color>
+  <color name="bifrost_nav">#111820</color>
+</resources>

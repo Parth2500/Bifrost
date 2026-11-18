@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/pair_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:fillViewport="true" android:background="@color/bifrost_ground">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+    <LinearLayout android:id="@+id/pair_hero" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:background="@color/bifrost_teal" android:orientation="vertical" android:gravity="center_horizontal"
+        android:paddingStart="24dp" android:paddingEnd="24dp" android:paddingTop="12dp" android:paddingBottom="24dp">
+      <ImageView android:layout_width="wrap_content" android:layout_height="wrap_content"
+          android:src="@drawable/bifrost_mark_large" android:importantForAccessibility="no" android:adjustViewBounds="true"
+          android:layout_marginBottom="16dp" android:layout_marginTop="16dp"/>
+      <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/app_name"
+          android:textAppearance="?attr/textAppearanceHeadlineMedium" android:textColor="@color/bifrost_ink"/>
+      <FrameLayout android:id="@+id/pair_arcs" android:layout_width="64dp" android:layout_height="36dp" android:layout_marginTop="12dp" android:visibility="gone"/>
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"
+        android:paddingStart="24dp" android:paddingEnd="24dp" android:paddingTop="24dp" android:paddingBottom="24dp">
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Pair this phone with your home"
+          android:textAppearance="?attr/textAppearanceTitleLarge" android:textColor="?attr/colorOnSurface"/>
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp"
+          android:text="Scan the QR code the admin shows you, or paste the link they sent. It is good for 10 minutes and works once."
+          android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurface"/>
+      <com.google.android.material.button.MaterialButton android:id="@+id/scan_button" style="@style/Widget.Material3.Button.OutlinedButton"
+          android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="20dp" android:text="Scan QR code"/>
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp"
+          android:text="or paste the link" android:textAppearance="?attr/textAppearanceBodySmall" android:textColor="?attr/colorOnSurface"/>
+      <com.google.android.material.textfield.TextInputLayout android:id="@+id/pair_field" style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+          android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp"
+          android:hint="Invitation link" app:endIconMode="clear_text"
+          app:boxCornerRadiusTopStart="16dp" app:boxCornerRadiusTopEnd="16dp" app:boxCornerRadiusBottomStart="16dp" app:boxCornerRadiusBottomEnd="16dp">
+        <com.google.android.material.textfield.TextInputEditText android:id="@+id/pair_input" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:inputType="textUri" android:maxLines="3" android:imeOptions="actionDone"/>
+      </com.google.android.material.textfield.TextInputLayout>
+      <LinearLayout android:id="@+id/pair_check" android:layout_width="match_parent" android:layout_height="wrap_content"
+          android:layout_marginTop="16dp" android:orientation="vertical" android:padding="16dp" android:visibility="gone"
+          android:background="@drawable/section_bg">
+        <TextView android:id="@+id/pair_home" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textAppearance="?attr/textAppearanceTitleMedium" android:textColor="?attr/colorOnSurface"/>
+        <TextView android:id="@+id/pair_address" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurface"/>
+        <TextView android:id="@+id/pair_key" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:fontFamily="monospace" android:textAppearance="?attr/textAppearanceBodyLarge"
+            android:textColor="?attr/colorOnSurface"/>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp"
+            android:text="Pair only if that is your home." android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="?attr/colorOnSurface"/>
+      </LinearLayout>
+      <TextView android:id="@+id/pair_status" android:layout_width="match_parent" android:layout_height="wrap_content"
+          android:layout_marginTop="12dp" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorError"
+          android:accessibilityLiveRegion="polite"/>
+      <com.google.android.material.button.MaterialButton android:id="@+id/pair_button" android:layout_width="match_parent"
+          android:layout_height="56dp" android:layout_marginTop="16dp" android:text="Pair"/>
+      <com.google.android.material.button.MaterialButton android:id="@+id/code_toggle" style="@style/Widget.Material3.Button.TextButton"
+          android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="8dp" android:text="No camera or link? Pair with a code"/>
+      <LinearLayout android:id="@+id/code_box" android:layout_width="match_parent" android:layout_height="wrap_content"
+          android:orientation="vertical" android:visibility="gone">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Type the home's address. It shows a code here and on the host screen; the admin approves when they match."
+            android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurface"/>
+        <com.google.android.material.textfield.TextInputLayout style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:hint="Home address" app:placeholderText="192.168.1.9:7781"
+            app:boxCornerRadiusTopStart="16dp" app:boxCornerRadiusTopEnd="16dp" app:boxCornerRadiusBottomStart="16dp" app:boxCornerRadiusBottomEnd="16dp">
+          <com.google.android.material.textfield.TextInputEditText android:id="@+id/code_address" android:layout_width="match_parent"
+              android:layout_height="wrap_content" android:inputType="textUri" android:imeOptions="actionDone"/>
+        </com.google.android.material.textfield.TextInputLayout>
+        <com.google.android.material.button.MaterialButton android:id="@+id/code_join" style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="12dp" android:text="Ask to join"/>
+        <TextView android:id="@+id/code_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp"
+            android:fontFamily="monospace" android:textSize="32sp" android:gravity="center" android:visibility="gone"
+            android:textColor="?attr/colorOnSurface" android:accessibilityLiveRegion="polite"/>
+        <TextView android:id="@+id/code_help" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp"
+            android:text="Check that the host screen shows the same code, then wait for the admin to approve." android:gravity="center"
+            android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurface" android:visibility="gone"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/code_cancel" style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="match_parent" android:layout_height="56dp" android:text="Cancel" android:visibility="gone"/>
+      </LinearLayout>
+    </LinearLayout>
+  </LinearLayout>
+</ScrollView>

@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-18T11:19:15.351020+00:00",
+  "title": "Design System: Bifröst",
+  "extensions": {
+    "colorMeta": {
+      "teal": {
+        "role": "primary",
+        "displayName": "Logo Teal",
+        "canonical": "#79B9B5"
+      },
+      "ink": {
+        "role": "primary",
+        "displayName": "Logo Ink",
+        "canonical": "#111820"
+      },
+      "amber": {
+        "role": "secondary",
+        "displayName": "Waiting Amber",
+        "canonical": "#F3D9A4"
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "Pale Teal Ground",
+        "canonical": "#EAF3F2"
+      },
+      "section": {
+        "role": "neutral",
+        "displayName": "Tonal Section",
+        "canonical": "#D3E7E5"
+      },
+      "ground-night": {
+        "role": "neutral",
+        "displayName": "Deep Ink-Teal Ground",
+        "canonical": "#0E161C"
+      },
+      "error": {
+        "role": "neutral",
+        "displayName": "Failure Red",
+        "canonical": "#B3261E"
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "App name on the pairing hero."
+      },
+      "title-medium": {
+        "displayName": "Title",
+        "purpose": "Home name in the bar."
+      },
+      "fingerprint": {
+        "displayName": "Fingerprint",
+        "purpose": "Pinned key shown for checking."
+      }
+    },
+    "shadows": [
+      {
+        "name": "lit-edge",
+        "value": "inset 0 1px 0 rgba(255,255,255,.6)",
+        "purpose": "One-pixel lit top edge on sections and the question card (12% white in dark). The only depth device."
+      }
+    ],
+    "motion": [
+      {
+        "name": "arcs-fill",
+        "value": "1200ms linear, infinite",
+        "purpose": "Arcs light one by one while connecting or pairing."
+      }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Section",
+      "kind": "card",
+      "refersTo": "section",
+      "description": "Tonal container with lit top edge.",
+      "html": "<div class=\"ds-sec\"><div class=\"ds-row\"><span class=\"ds-dot on\"></span><div><div class=\"ds-name\">Pixel 8</div><div class=\"ds-meta\">on now</div></div></div></div>",
+      "css": ".ds-sec{background:#D3E7E5;border-radius:16px;padding:4px 16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.6);font:16px/1.5 Roboto,system-ui,sans-serif;color:#111820}.ds-row{display:flex;align-items:center;gap:12px;min-height:56px}.ds-name{font-weight:500}.ds-meta{color:#2c4745;font-size:14px}.ds-dot{width:12px;height:12px;border-radius:50%;box-sizing:border-box;border:2px solid #111820}.ds-dot.on{background:#111820}"
+    },
+    {
+      "name": "Question Card",
+      "kind": "card",
+      "refersTo": "question-card",
+      "description": "Amber card for a waiting question.",
+      "html": "<div class=\"ds-q\"><div class=\"ds-t\">Allow download?</div><div class=\"ds-row2\"><button class=\"ds-qbtn\">Allow</button></div></div>",
+      "css": ".ds-q{background:#F3D9A4;color:#3B2A00;border-radius:16px;padding:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.6);font:16px/1.5 Roboto,system-ui,sans-serif}.ds-t{font-weight:500}.ds-row2{display:flex;gap:8px;margin-top:12px}.ds-qbtn{font:inherit;font-weight:500;min-height:48px;padding:0 20px;border:0;border-radius:24px;background:#3B2A00;color:#F3D9A4}.ds-qbtn:focus-visible{outline:3px solid #111820;outline-offset:2px}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Ink pill button.",
+      "html": "<button class=\"ds-btn\">Pair</button>",
+      "css": ".ds-btn{font:500 16px Roboto,system-ui,sans-serif;min-height:48px;padding:0 20px;border:0;border-radius:24px;background:#111820;color:#EAF3F2}.ds-btn:focus-visible{outline:3px solid #111820;outline-offset:2px}.ds-btn:active{opacity:.85}"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Ring-only secondary action.",
+      "html": "<button class=\"ds-quiet\">Sign out</button>",
+      "css": ".ds-quiet{font:500 16px Roboto,system-ui,sans-serif;min-height:48px;padding:0 20px;border:0;border-radius:24px;background:none;color:#111820;box-shadow:inset 0 0 0 1px #2c4745}.ds-quiet:focus-visible{outline:3px solid #111820;outline-offset:2px}"
+    },
+    {
+      "name": "Top Bar",
+      "kind": "nav",
+      "refersTo": "top-bar",
+      "description": "Teal bar: mark, home name, area line, arcs.",
+      "html": "<div class=\"ds-bar\"><div><div class=\"ds-home\">Home at Oak Street</div><div class=\"ds-area\">On your Wi-Fi</div></div><svg width=\"40\" height=\"24\" viewBox=\"0 0 40 24\" fill=\"none\" stroke=\"#111820\" stroke-width=\"3.4\" stroke-linecap=\"round\"><path d=\"M4 21a16 16 0 0 1 32 0\"/><path d=\"M10 21a10.5 10.5 0 0 1 21 0\"/><path d=\"M15.5 21a5 5 0 0 1 9 0\" opacity=\".35\"/></svg></div>",
+      "css": ".ds-bar{background:#79B9B5;color:#111820;height:64px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;font-family:Roboto,system-ui,sans-serif}.ds-home{font-size:16px;font-weight:500}.ds-area{font-size:12px;color:#1F3B3A}"
+    },
+    {
+      "name": "Bottom Navigation",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Two destinations; active in a teal pill.",
+      "html": "<div class=\"ds-nav\"><span class=\"ds-on\">Home</span><span>Downloads</span></div>",
+      "css": ".ds-nav{background:#111820;display:flex;justify-content:space-around;padding:12px;font:500 12px Roboto,system-ui,sans-serif;color:#C9D8D6}.ds-on{background:#79B9B5;color:#111820;border-radius:16px;padding:4px 20px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Teal Glass Object",
+    "overview": "The home is one teal object seen through a phone. Surfaces are flat tinted fills in the logo's teal and ink, lifted from the ground by a one-pixel lit top edge instead of blur, gradient or drop shadow. Only what needs the person takes full colour: an amber question, the active destination, the connection arcs.",
+    "keyCharacteristics": [
+      "Flat tonal layers, lit top edge, no blur, no gradients, no shadows.",
+      "Teal bar and ink bottom navigation frame a pale teal (or deep ink-teal) ground.",
+      "Full colour is rationed: amber for a waiting question, red only for failure.",
+      "State by shape (dot filled/ring, arcs lit/dim) plus words.",
+      "48dp minimum targets, sp type, edge-to-edge, system Back."
+    ],
+    "rules": [
+      {
+        "name": "The Full Colour Rule",
+        "body": "Only what needs the person takes full colour: the open question, the active destination, the lit arcs. Anything else is a tonal fill.",
+        "section": "colors"
+      },
+      {
+        "name": "The Failure Red Rule",
+        "body": "Red appears only for failure text. A waiting question is amber, never red.",
+        "section": "colors"
+      },
+      {
+        "name": "The Same Palette Rule",
+        "body": "The web page declares the same values as custom properties; change a colour in both places.",
+        "section": "colors"
+      },
+      {
+        "name": "The Scale Only Rule",
+        "body": "Sizes come from the Material text appearances in sp; do not set ad hoc pixel sizes in the shell.",
+        "section": "typography"
+      },
+      {
+        "name": "The Lit Edge Rule",
+        "body": "A raised surface is a flat fill plus a one-pixel top highlight. No blur, gradient or drop shadow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep surfaces flat: tonal fill plus a one-pixel lit top edge.",
+      "Do show state by shape plus words (dot filled or ring, arcs lit or dim).",
+      "Do keep the bar teal with ink icons in both schemes.",
+      "Do keep targets at 48dp or more and type in sp.",
+      "Do use the same hex values in `colors.xml` and the web page's custom properties."
+    ],
+    "donts": [
+      "Don't use blur, gradients or drop shadows for depth.",
+      "Don't use colour as the only signal of state.",
+      "Don't use red for anything but failure, or amber for anything but a waiting question.",
+      "Don't add navigation destinations for features that do not exist (no fake Watch or Profile).",
+      "Don't fall back to the grey-screen-plus-blue-accent default."
+    ]
+  }
+}

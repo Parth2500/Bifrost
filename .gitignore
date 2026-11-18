@@ -4,3 +4,8 @@ artifacts/
 *.user
 .superpowers/
 TestResults/
+.impeccable/mocks/
+.impeccable/review/
+*.keystore
+*.jks
+*.key

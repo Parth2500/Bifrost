@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <color name="bifrost_ground">#0E161C</color>
+  <color name="bifrost_section">#1C2A33</color>
+  <color name="bifrost_outline">#8FB0AD</color>
+  <color name="bifrost_amber">#E3A857</color>
+  <color name="bifrost_on_amber">#1D1400</color>
+  <color name="bifrost_error">#F2B8B5</color>
+  <color name="bifrost_edge">#1FFFFFFF</color>
+  <color name="bifrost_nav">#1C2A33</color>
+</resources>
