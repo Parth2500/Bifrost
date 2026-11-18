@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+## 0.2.0 (2026-11-18)
+
+The first release: the home (Linux), its Android app, and installing extensions from signed releases. Everything below.
+
+- **Android:** the manifest settings were not being applied (no icon, the package name as the label, backups on, no
+  internet permission in a release build). They are now: the Bifröst icon, the label "Bifröst", no backups, clear-text
+  traffic refused, and the internet permission present.
+- **A home with the network on works under the service.** Pairing codes and any request that arrives by the home's IP
+  address no longer ask the system for its interface list, which the service's sandbox does not allow.
+- **The host screen** tells you what it is doing during a long install (a message, and the buttons are disabled), and
+  "Update now" on something already current says so without downloading it.
+
+### Added: install and update from signed releases (step 5, ADR 004)
+
+- **`bifrost release keygen | pack | sign | verify`** for the owner: make a key pair (the private half is written with
+  mode 0600 and never overwritten), pack an extension into `<name>-<version>.bifrost`, sign it (ECDSA P-256), check it.
+- **Install from a file** with `bifrost extension install --from <file>`, and **from the latest GitHub release** with a
+  button on the host screen. The signature is checked before the package is opened; unpacking refuses unsafe paths and
+  links; a release that is not newer is refused; the version before is kept for `bifrost extension rollback <name>`.
+- **Updates are offered**, once a day, as a question to the admin, and installed only when they say Update.
+- **No keys are built in yet**, so every install is refused until the owner's public keys are pasted into `ReleaseKeys.BuiltIn`.
+
+### Changed: the Android app
+
+- **Redesigned** with Material 3 and the Bifröst logo, in light and dark: pairing screen with a check card and the
+  key in groups, a teal bar with live connection arcs, a Home and Downloads bar, plain "can't reach" and "isn't
+  available" states, and Forget in the bar's menu.
+- **Scan a QR code** to pair (Google's code scanner; no camera permission). The link is filled in; the person still checks the
+  card and presses Pair.
+- **The device token is encrypted** with an Android Keystore key. A pairing made before this is sealed on first start.
+- **Release builds are arm64 only**: about 13 MB instead of about 73 MB for a debug build with two architectures.
+
+### Added: the host screen (ADR 003)
+
+- **`bifrost open`** opens the host screen in the browser on this machine. Bifröst makes a link that works once for two
+  minutes, only for the admin socket, and the browser trades it for a short session cookie (loopback only).
+- **The host screen** (`/host/`): pair a device (choose the person first, then a QR code and link that expire in
+  10 minutes), people and devices (change a role, remove, sign out), questions, extensions (start, stop, restart),
+  and the home with its key. Same teal-and-ink look as the app, light and dark.
+- `POST /api/v1/extensions/{name}/start|stop|restart` and `GET /api/v1/host/info`, for this computer's admin only.
+- `POST /api/v1/invitations?qr=svg` also returns the code as an SVG picture.
+- Not built, and the screen says so: installing an extension from a release, and changing the home name or home network
+  from the browser. Rotating the key stays `bifrost identity rotate`, behind the system password prompt.
+
 - **Android:** when the home refuses the device's token (it was signed out, or the key changed) the app drops
   the pairing and shows the pairing screen again. A **Forget** button does the same on purpose.
 

@@ -125,6 +125,8 @@ Taken from Sleipnir's design, moved here [owner: S6].
 
 A pairing cannot be approved from Huginn: the admin must compare the code on the new device.
 
+**The host screen** (ADR 003): `bifrost open` asks for a one-time link on the admin socket and opens it in a browser on the host. The browser gets a loopback-only session cookie, which is the one exception to "no cookies" in §6.4.
+
 There is one admin person by default. More can be added later without changing the model.
 
 ### 5.1 Asking the admin [owner: S12]
@@ -523,11 +525,18 @@ Each step ends with working, tested software.
    an invitation link, then show Sleipnir's screens in a web view that is not allowed to reach the
    network itself: every request goes through the pinned, signed-in client. **Run on a real Pixel 6a
    (2026-11-17): pairing by link over the home Wi-Fi worked; the web view then showed a blank page
-   because no Sleipnir was running under that throwaway home.** **Left:** showing real Sleipnir screens;
-   pairing by code on the app; the pinning test on each web view engine
-   (the Android one is the interception in `MainActivity`; the other three engines are not started);
-   the token belongs in the Android Keystore, not plain preferences.
-5. **Install and update.** Signed releases, rollback, install from file.
+   because no Sleipnir was running under that throwaway home.** Since then (2026-11-18): the app was
+   redesigned (Material 3, the Bifröst logo, light and dark), pairing by **QR scan** (Google's scanner, no
+   camera permission), the token is encrypted with a **Keystore** key (an older plain-text pairing is sealed on
+   first start), a member and an admin were each paired on a real Pixel 6a, and the **host screen** exists
+   (ADR 003). **Left:** showing real Sleipnir screens under Bifröst; pairing by code (path B) on the app and
+   the host screen's join requests; the pinning test on the other three web view engines (Android's is the
+   interception in `MainActivity`).
+5. **Install and update.** Signed releases, rollback, install from file. **Built** (2026-11-18, ADR 004):
+   the package and signature format, `bifrost release keygen | pack | sign | verify` for the owner, install from a
+   file and from the latest GitHub release, rollback, and a daily offer of updates as a question. **Left:** the
+   owner's keys (the built-in list is empty, so every install is refused), a first signed release of Sleipnir,
+   installing under the real service, and a Bifröst self-update the same way.
 6. **Folders and events.** Per-person folders, visibility, publish and subscribe. Saga, when it
    exists, is the second extension and the test of this interface.
 7. **Online link.** Link the home, send a "download finished" notice. Then notices with answers.

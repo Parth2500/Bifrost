@@ -105,3 +105,27 @@ dotnet ef migrations add <Name> -p src/Bifrost.Server -o Persistence/Migrations
 | `Bifrost.App` | The `bifrost` command: `daemon`, `service` and `desk` |
 | `Bifrost.Tests` | xUnit, `FakeTimeProvider`, CsCheck |
 | `Bifrost.FakeExtension` | The extension the tests run |
+
+## The Android app
+
+Not in `Bifrost.slnx`: it needs the Android workload, the Android SDK and JDK 21.
+
+```sh
+dotnet build src/Bifrost.Android -p:AndroidSdkDirectory=$HOME/Android/Sdk -p:JavaSdkDirectory=$HOME/.jdks/temurin-21
+dotnet build src/Bifrost.Android -c Release ...   # arm64 only, about 13 MB; debug is about 73 MB (arm64 and x86_64)
+```
+
+The APK is under `bin/<Configuration>/net10.0-android/`. Install it with `adb install -r …-Signed.apk`.
+
+## Releasing
+
+The Android app is signed with the owner's own key, which stays on the owner's machine and is never in the repository.
+Make it once, and back it up somewhere separate (a phone only updates an app signed with the same key):
+
+```sh
+~/.jdks/temurin-21/bin/keytool -genkeypair -v -keystore ~/bifrost-keys/bifrost-android.keystore \
+  -alias bifrost -keyalg RSA -keysize 4096 -validity 36500
+```
+
+Then `BIFROST_ANDROID_KEYSTORE=~/bifrost-keys/bifrost-android.keystore scripts/release.sh 0.2.0` builds the signed APK and
+the Linux program, checks which key signed the APK, and writes everything to `artifacts/release/` with checksums.
