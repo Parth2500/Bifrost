@@ -333,7 +333,7 @@ Bifröst is the one place that knows the home's folders and who may see each.
 - The person picks private or public for each download. With no choice given, it is private [my call].
 - **There is no file manager for members yet** [owner]. So the choice is made at download time, and
   only the admin, on the host, can move a file between the two. A later Files extension, or
-  Ratatoskr on the host, could do this.
+  Ratatoskr on the host, could do this. See [ADR 005](decisions/005-files-sharing-and-saga.md) (proposed).
 - The admin can add a folder that already holds media, owned by the home and public. Sleipnir does
   not write to it.
 
