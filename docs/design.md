@@ -200,7 +200,7 @@ credential.**
 
 1. The device finds the home by mDNS and opens HTTPS. It trusts the certificate for this request only.
 2. It sends a join request: name, platform, a random nonce.
-3. Both sides show a **6-digit code** derived from the fingerprint the device actually saw and both
+3. Both sides show a **8-digit code** derived from the fingerprint the device actually saw and both
    nonces. A device in the middle shows a different certificate, so the codes differ.
 4. An admin sees the request on the host or a paired device, compares the code, picks the person
    and approves.
@@ -480,7 +480,7 @@ Each row needs a test.
 |---|---|
 | Another account on the host acts as the admin | The admin socket accepts one operating-system account. Host-only actions need the system password prompt |
 | A device on the Wi-Fi uses the home | Every route except server info and pairing needs a device token. LAN listener off until set up |
-| An impostor home | Pinned fingerprint. The QR carries it. The 6-digit code binds it for discovered homes |
+| An impostor home | Pinned fingerprint. The QR carries it. The 8-digit code binds it for discovered homes |
 | A website drives the loopback API | Header tokens only, `Host` allowlist, no CORS |
 | A lost or stolen device | Revocation, immediate. Last seen is shown to the admin |
 | A tampered or fake extension release | Signature checked against a built-in key. Fixed repository list |
@@ -546,7 +546,7 @@ Steps 1 to 3 are mostly Sleipnir's existing Phase 2 plan with a different home f
 ## 13. Left to the builder
 
 - Ports, the manifest format, the signature scheme, and the mDNS library.
-- The construction of the 6-digit code, within §7.2's requirement.
+- The construction of the 8-digit code, within §7.2's requirement.
 - SQL schema and migrations.
 - How Sleipnir detects which mode it is in.
 - Polling or a held connection for answers.
