@@ -1,5 +1,6 @@
 using Bifrost.Core.Models;
 using Bifrost.Server.People;
+using Bifrost.Server.Security;
 
 namespace Bifrost.Server.Api;
 
@@ -17,7 +18,7 @@ internal sealed class PairingEndpoints(PairingService pairing, PeopleService peo
         api.MapPost("/pair", Pair);
     }
 
-    private async Task<IResult> Invite(HttpContext context, InviteRequest body)
+    private async Task<IResult> Invite(HttpContext context, InviteRequest body, string? qr)
     {
         if (!context.Principal().IsAdmin) return Problem.Create(403, "forbidden", "Only an admin can invite a device.");
         if (fingerprint is null || lanPort is null) return Problem.Create(409, "lan_off", "The home network listener is off.");
@@ -29,18 +30,21 @@ internal sealed class PairingEndpoints(PairingService pairing, PeopleService peo
         var host = context.Request.Host.Host;
         if (System.Net.IPAddress.TryParse(host.Trim('[', ']'), out var ip) && System.Net.IPAddress.IsLoopback(ip) || host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
         {
-            host = LanAddress() ?? host;
+            // Nothing to put in the link if this machine's address cannot be found: a loopback address would never work from a phone.
+            host = HostAddresses.Lan() ?? "";
+            if (host.Length == 0) return Problem.Create(409, "no_lan_address", "This machine has no address on the home network. Connect it to the Wi-Fi or network and try again.");
         }
         var link = $"bifrost://pair?h={Uri.EscapeDataString($"{host}:{lanPort}")}&fp={fingerprint}"
             + $"&t={invitation.Secret}&n={Uri.EscapeDataString(homeName)}";
-        return Results.Ok(new { link, expiresAt = invitation.Expires });
+        // The host screen asks for the code as a picture (?qr=svg), so it needs no code of its own to draw one.
+        string? qrSvg = null;
+        if (qr == "svg")
+        {
+            using var data = new QRCoder.QRCodeGenerator().CreateQrCode(link, QRCoder.QRCodeGenerator.ECCLevel.M);
+            qrSvg = new QRCoder.SvgQRCode(data).GetGraphic(8, "#111820", "#ffffff", drawQuietZones: true, sizingMode: QRCoder.SvgQRCode.SizingMode.ViewBoxAttribute);
+        }
+        return Results.Ok(new { link, expiresAt = invitation.Expires, qrSvg });
     }
-
-    /// <summary>The first up, non-loopback IPv4 address of this machine.</summary>
-    private static string? LanAddress() => System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
-        .Where(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up && n.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
-        .SelectMany(n => n.GetIPProperties().UnicastAddresses).Select(a => a.Address)
-        .FirstOrDefault(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)?.ToString();
 
     /// <summary>Public: the secret is the credential. Wrong secrets count against the caller in the host's limiter.</summary>
     private async Task<IResult> Pair(PairRequest body)

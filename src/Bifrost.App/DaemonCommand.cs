@@ -76,10 +76,26 @@ internal static class DaemonCommand
         // say "service": a desktop session passes its own down to every terminal. SYSTEMD_EXEC_PID
         // names the one process systemd itself started.
         var asService = Environment.GetEnvironmentVariable("SYSTEMD_EXEC_PID") == Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
-        var programs = ExtensionSettings.Load(Path.Combine(paths.Settings, ExtensionSettings.FileName), asService,
-            logFactory.CreateLogger("Bifrost.Extensions"));
+        // What was installed from a signed release runs from its "current" link; extensions.json, when it names one, wins.
+        var installer = new ExtensionInstaller(Path.Combine(paths.Data, "extensions"), ReleaseKeys.Default());
+        var programs = new Dictionary<string, string>(installer.Programs(), StringComparer.Ordinal);
+        foreach (var (name, program) in ExtensionSettings.Load(Path.Combine(paths.Settings, ExtensionSettings.FileName), asService,
+                     logFactory.CreateLogger("Bifrost.Extensions")))
+        {
+            programs[name] = program;
+        }
         await using var extensions = new ExtensionManager(programs, paths.Runtime, paths.Data, TimeProvider.System, logs);
         using var questions = new QuestionService(people, TimeProvider.System);
+        using var github = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
+        // A new version goes live when the admin says yes: the running extension is restarted onto it.
+        var updates = new ExtensionUpdates(installer, questions, github, TimeProvider.System, logFactory.CreateLogger<ExtensionUpdates>(), async name =>
+        {
+            if (extensions.Get(name) is { } running)
+            {
+                await running.StopAsync();
+                await running.StartAsync();
+            }
+        });
         await using var extensionApi = new ExtensionApiHost(extensions.All, people, routes => QuestionEndpoints.MapForExtensions(routes, questions));
         // A Unix socket's path is limited to 108 bytes; say so instead of failing deep inside the listener.
         if (extensions.All.SelectMany(e => new[] { e.SocketPath, e.ApiSocketPath }).Append(paths.AdminSocket)
@@ -92,13 +108,30 @@ internal static class DaemonCommand
         using var homeKey = LanEnabled(paths.Settings, out var lanPort, out var fallbackPort, out var homeName) ? HomeKey.LoadOrCreate(paths.Data) : null;
         var lan = homeKey is null ? null : new LanOptions(homeKey.Certificate, lanPort, fallbackPort, homeName);
         await using var host = BifrostHost.Create(new BifrostHostOptions(Admin: new AdminSocketOptions(paths.AdminSocket, admin.Uid), Lan: lan,
-            RotateHomeKey: () => { using var fresh = HomeKey.Rotate(paths.Data); return fresh.Fingerprint; }), people, TimeProvider.System, extensions: extensions, questions: questions);
+            RotateHomeKey: () => { using var fresh = HomeKey.Rotate(paths.Data); return fresh.Fingerprint; }), people, TimeProvider.System, extensions: extensions, questions: questions, installer: installer, updates: updates);
         await host.StartAsync();
         try
         {
             // Bifröst's own listener first, then the socket extensions ask on, then the extensions.
             await extensionApi.StartAsync();
             await extensions.StartAllAsync();
+            // Looks for updates a minute after start and then daily. No internet is fine: the check just finds nothing.
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(1), stop.Token);
+                    while (!stop.IsCancellationRequested)
+                    {
+                        await updates.OfferUpdatesAsync(stop.Token);
+                        await Task.Delay(TimeSpan.FromDays(1), stop.Token);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // stopping
+                }
+            });
             DaemonInfo.Write(paths.Runtime, new DaemonInfo(host.Port, Environment.ProcessId, Version));
             Console.WriteLine($"Bifröst listening on http://127.0.0.1:{host.Port} and, for {admin.Name}, on {paths.AdminSocket}");
             using var announcer = homeKey is null ? null : new MdnsAnnouncer(lan!.Name, lanPort, homeKey.Fingerprint, logFactory.CreateLogger("Bifrost.Mdns"));

@@ -14,19 +14,29 @@ internal static class HomePage
         <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
         <title>Bifröst</title>
         <style>
-          body{font:17px system-ui,sans-serif;margin:0;padding:16px;color:#1b1b1f;background:#fff}
-          h1{font-size:22px;margin:0 0 4px}h2{font-size:18px;margin:20px 0 8px}.me{color:#555;font-size:14px;margin-bottom:8px}
-          #msg{min-height:1.4em;color:#b00020}.card{border:1px solid #ccc;border-radius:10px;padding:10px 12px;margin-bottom:8px}
-          .name{font-weight:600}.meta{color:#555;font-size:14px;margin-top:2px}
-          .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;background:#aaa}.on{background:#2e9e43}
-          .row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
-          button{font:inherit;padding:8px 12px;border:0;border-radius:8px;background:#2b5fd9;color:#fff}button.quiet{background:#e3e3e8;color:#1b1b1f}
+          :root{color-scheme:light dark;--ground:#EAF3F2;--section:#D3E7E5;--ink:#111820;--ink2:#2c4745;--line:rgba(17,24,32,.18);--accent:#111820;--on-accent:#EAF3F2;--amber:#F3D9A4;--on-amber:#3B2A00;--err:#B3261E;--edge:rgba(255,255,255,.6)}
+          @media(prefers-color-scheme:dark){:root{--ground:#0E161C;--section:#1C2A33;--ink:#E4EEED;--ink2:#A9C4C1;--line:rgba(228,238,237,.18);--accent:#79B9B5;--on-accent:#111820;--amber:#E3A857;--on-amber:#1D1400;--err:#F2B8B5;--edge:rgba(255,255,255,.12)}}
+          body{font:16px/1.5 Roboto,system-ui,sans-serif;margin:0;padding:16px 16px 24px;color:var(--ink);background:var(--ground)}
+          ::selection{background:var(--accent);color:var(--on-accent)}
+          .who{font-size:24px;font-weight:500;margin:8px 0 0}.me{font-size:14px;color:var(--ink2);margin:0 0 8px}
+          h2{font-size:20px;font-weight:500;margin:24px 0 8px}
+          #msg{color:var(--err);font-size:14px}
+          .sec{background:var(--section);border-radius:16px;padding:4px 16px;box-shadow:inset 0 1px 0 var(--edge)}
+          .item{display:flex;align-items:center;gap:12px;min-height:56px;padding:10px 0;border-top:1px solid var(--line)}.item:first-child{border-top:0}
+          .grow{flex:1;min-width:0}.name{font-weight:500}.meta{color:var(--ink2);font-size:14px}
+          .dot{width:12px;height:12px;border-radius:50%;box-sizing:border-box;border:2px solid var(--ink);flex:none}.dot.on{background:var(--ink)}
+          .q{background:var(--amber);color:var(--on-amber);border-radius:16px;padding:16px;margin:8px 0 12px;box-shadow:inset 0 1px 0 var(--edge)}.q .meta{color:inherit;opacity:.85}
+          .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+          button{font:inherit;font-weight:500;min-height:48px;padding:0 20px;border:0;border-radius:24px;background:var(--accent);color:var(--on-accent)}
+          .q button{background:var(--on-amber);color:var(--amber)}
+          button.quiet{background:none;color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink2)}
+          button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
         </style></head>
-        <body><h1>Bifröst</h1><div class="me" id="me"></div><div id="msg" role="status"></div>
+        <body><div class="me" id="me"></div><div id="msg" role="status"></div>
         <div id="questions"></div>
-        <h2>Devices</h2><div id="devices"></div>
-        <div id="peopleBox"><h2>People</h2><div id="people"></div></div>
-        <div id="extensionsBox"><h2>Extensions</h2><div id="extensions"></div></div>
+        <h2>Devices</h2><div class="sec" id="devices"></div>
+        <div id="peopleBox"><h2>People</h2><div class="sec" id="people"></div></div>
+        <div id="extensionsBox"><h2>Extensions</h2><div class="sec" id="extensions"></div></div>
         <script>
         const msg = t => document.getElementById('msg').textContent = t || '';
         const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -60,17 +70,17 @@ internal static class HomePage
             document.getElementById('peopleBox').hidden = !people; // only an admin sees the people and the extensions
             document.getElementById('extensionsBox').hidden = !extensions;
             if (!me) throw new Error('no me');
-            document.getElementById('me').textContent = `${me.personName} · ${me.role} · this is ${me.deviceName}`;
+            document.getElementById('me').innerHTML = `<div class="who">${esc(me.personName)}</div>${esc(me.role)} · signed in on ${esc(me.deviceName)}`;
             document.getElementById('questions').innerHTML = ((questions && questions.items) || []).filter(q => q.state === 'open').map(q => `
-              <div class="card"><div class="name">${esc(q.title)}</div><div class="meta">${esc(q.text)} · from ${esc(q.asker)}</div>
+              <div class="q"><div class="name">${esc(q.title)}</div><div class="meta">${esc(q.text)} · from ${esc(q.asker)}</div>
               <div class="row">${q.choices.map(c => `<button onclick="act('POST','/api/v1/questions/${q.id}/answer',{choice:'${esc(c.id)}'})">${esc(c.label)}</button>`).join('')}</div></div>`).join('');
             const shown = (devices || []).filter(d => !d.revoked).sort((a, b) => (online(b.lastSeenAt) ? 1 : 0) - (online(a.lastSeenAt) ? 1 : 0));
             document.getElementById('devices').innerHTML = shown.map(d => `
-              <div class="card"><div class="name"><span class="dot ${d.isLocal || online(d.lastSeenAt) ? 'on' : ''}"></span>${esc(d.name)}</div>
-              <div class="meta">${esc(name[d.personId] || '')} · ${esc(d.platform)}${d.kind === 'browser-fallback' ? ' · view only' : ''} · ${d.isLocal ? 'this computer' : 'seen ' + ago(d.lastSeenAt)}</div>
-              ${d.isLocal ? '' : `<div class="row"><button class="quiet" onclick="if (confirm('Sign this device out?')) act('DELETE','/api/v1/devices/${d.id}')">Sign out</button></div>`}</div>`).join('') || '<p>No devices.</p>';
-            document.getElementById('people').innerHTML = (people || []).map(p => `<div class="card"><div class="name">${esc(p.displayName)}</div><div class="meta">${esc(p.role)}</div></div>`).join('');
-            document.getElementById('extensions').innerHTML = (extensions || []).map(e => `<div class="card"><div class="name"><span class="dot ${e.state === 'running' ? 'on' : ''}"></span>${esc(e.name)}</div><div class="meta">${esc(e.state)}${e.restarts ? ' · restarted ' + e.restarts + ' times' : ''}</div></div>`).join('') || '<p>None running.</p>';
+              <div class="item"><span class="dot ${d.isLocal || online(d.lastSeenAt) ? 'on' : ''}"></span><div class="grow"><div class="name">${esc(d.name)}</div>
+              <div class="meta">${esc(name[d.personId] || '')} · ${esc(String(d.platform).replace(/\s*\(.*\)/, ''))}${d.kind === 'browser-fallback' ? ' · view only' : ''} · ${d.isLocal ? 'online' : 'seen ' + ago(d.lastSeenAt)}</div></div>
+              ${d.isLocal ? '' : `<button class="quiet" onclick="if (confirm('Sign this device out?')) act('DELETE','/api/v1/devices/${d.id}')">Sign out</button>`}</div>`).join('') || '<p class="meta">No devices.</p>';
+            document.getElementById('people').innerHTML = (people || []).map(p => `<div class="item"><div class="grow"><div class="name">${esc(p.displayName)}</div><div class="meta">${esc(p.role)}</div></div></div>`).join('');
+            document.getElementById('extensions').innerHTML = (extensions || []).map(e => `<div class="item"><span class="dot ${e.state === 'running' ? 'on' : ''}"></span><div class="grow"><div class="name">${esc(e.name)}</div><div class="meta">${esc(e.state)}${e.restarts ? ' · restarted ' + e.restarts + ' times' : ''}</div></div></div>`).join('') || '<p class="meta">None running.</p>';
             msg('');
           } catch (e) { msg('Could not reach the home.'); }
         }

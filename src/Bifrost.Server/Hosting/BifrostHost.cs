@@ -15,7 +15,7 @@ namespace Bifrost.Server.Hosting;
 
 /// <summary>
 /// The loopback API (design §6.1, §6.4): HTTP on 127.0.0.1 and ::1 only, a bearer device token on every
-/// route but server info, a <c>Host</c> allowlist, no cookies and no CORS. The host admin has a second
+/// route but server info, a <c>Host</c> allowlist, no CORS, and no cookies except the host screen's session (ADR 003). The host admin has a second
 /// way in, the admin socket (design §5): there the kernel says which account is calling, and only the
 /// recorded admin account is let through, as the "This computer" device.
 /// </summary>
@@ -33,6 +33,8 @@ public sealed partial class BifrostHost : IAsyncDisposable
     private readonly ILoggerProvider? _extraLogs;
     private readonly ExtensionManager? _extensions;
     private readonly QuestionService? _questions;
+    private readonly ExtensionInstaller? _installer;
+    private readonly ExtensionUpdates? _updates;
     private readonly PairingService _pairing;
     private JoinService? _join;
     private volatile bool _rotationPending;
@@ -44,11 +46,14 @@ public sealed partial class BifrostHost : IAsyncDisposable
     private WebApplication? _app;
 
     private BifrostHost(BifrostHostOptions options, PeopleService people, TimeProvider time, ILoggerProvider? extraLogs,
-        ExtensionManager? extensions, QuestionService? questions)
+        ExtensionManager? extensions, QuestionService? questions, ExtensionInstaller? installer, ExtensionUpdates? updates)
     {
+        _updates = updates;
+        _installer = installer;
         _extensions = extensions;
         _questions = questions;
         _time = time;
+        _hostSessions = new HostSessions(time);
         _pairing = new PairingService(people, time);
         _options = options;
         _people = people;
@@ -65,9 +70,11 @@ public sealed partial class BifrostHost : IAsyncDisposable
     /// <param name="extraLogs">An additional log sink, used by tests to check that no secret is ever logged (D7).</param>
     /// <param name="extensions">The extensions to report and route to; none when null.</param>
     /// <param name="questions">The questions admins see and answer here; no question routes when null.</param>
+    /// <param name="installer">Installs signed extension packages; installing is refused when null.</param>
+    /// <param name="updates">Fetches releases from GitHub and offers updates; none when null.</param>
     public static BifrostHost Create(BifrostHostOptions options, PeopleService people, TimeProvider time, ILoggerProvider? extraLogs = null,
-        ExtensionManager? extensions = null, QuestionService? questions = null) =>
-        new(options, people, time, extraLogs, extensions, questions);
+        ExtensionManager? extensions = null, QuestionService? questions = null, ExtensionInstaller? installer = null, ExtensionUpdates? updates = null) =>
+        new(options, people, time, extraLogs, extensions, questions, installer, updates);
 
     public async Task StartAsync(CancellationToken ct = default)
     {
@@ -232,6 +239,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
             });
         }
         new PairingEndpoints(_pairing, _people, _options.Lan is { } l ? HomeKey.FingerprintOf(l.Certificate) : null, _options.Lan?.Port, _options.Lan?.Name ?? Environment.MachineName).Map(api);
+        MapHostScreen(app, api);
         ExtensionEndpoints.Map(api, _extensions);
         if (_questions is not null) QuestionEndpoints.MapForAdmins(api, _questions);
         new ExtensionProxy(_extensions, app.Services.GetRequiredService<Yarp.ReverseProxy.Forwarder.IHttpForwarder>()).Map(app);
@@ -266,7 +274,7 @@ public sealed partial class BifrostHost : IAsyncDisposable
 
     private static async Task RejectForeignHosts(HttpContext context, Func<Task> next)
     {
-        if (!AllowedHosts.Contains(context.Request.Host.Host, StringComparer.OrdinalIgnoreCase) && !IsOwnLanName(context.Request.Host.Host))
+        if (!AllowedHosts.Contains(context.Request.Host.Host, StringComparer.OrdinalIgnoreCase) && !IsOwnLanName(context))
         {
             await Problem.WriteAsync(context, 400, "host_not_allowed", "This server only answers to its own names.");
             return;
@@ -275,13 +283,13 @@ public sealed partial class BifrostHost : IAsyncDisposable
     }
 
     /// <summary>The home's own LAN names and addresses (design §6.4); any other Host is a rebinding attempt.</summary>
-    private static bool IsOwnLanName(string host)
+    private static bool IsOwnLanName(HttpContext context)
     {
+        var host = context.Request.Host.Host;
         if (host.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase)
             || host.Equals(Environment.MachineName + ".local", StringComparison.OrdinalIgnoreCase)) return true;
         if (!IPAddress.TryParse(host.Trim('[', ']'), out var address)) return false;
-        return System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
-            .SelectMany(n => n.GetIPProperties().UnicastAddresses).Any(a => a.Address.Equals(address));
+        return HostAddresses.IsOwn(address, context.Connection.LocalIpAddress);
     }
 
     /// <summary>
@@ -301,6 +309,23 @@ public sealed partial class BifrostHost : IAsyncDisposable
         {
             await AuthenticateAdminSocket(context, (tag as AdminPeer)?.Uid, next);
             return;
+        }
+
+        // A browser on this machine with a live host session is the admin's own device (ADR 003). Anything else falls through to tokens.
+        if (IsHostBrowser(context) && HasHostSession(context)
+            && (context.Request.Path.StartsWithSegments("/api") || context.Request.Path.StartsWithSegments(ExtensionProxy.Prefix)))
+        {
+            if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method) && !SameOrigin(context))
+            {
+                await Problem.WriteAsync(context, 403, "cross_site", "This request did not come from the host screen.");
+                return;
+            }
+            if (await _people.LocalPrincipalAsync() is { } local)
+            {
+                context.SetPrincipal(local);
+                await next();
+                return;
+            }
         }
 
         var isPublic = HttpMethods.IsGet(context.Request.Method) && context.Request.Path == "/api/v1/server";
