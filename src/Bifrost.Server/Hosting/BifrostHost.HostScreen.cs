@@ -168,11 +168,13 @@ public sealed partial class BifrostHost
         app.MapGet("/host/login", (HttpContext context, string? t) =>
         {
             if (!IsHostBrowser(context)) return Results.NotFound();
-            if (_limiter.IsBlocked("host-login")) return Results.Text(HostPage.Expired, "text/html; charset=utf-8", statusCode: 429);
+            // A good link always works, however many wrong ones were tried: a 256-bit secret cannot be guessed, so only
+            // wrong guesses are slowed, and nobody can lock the admin out by spamming them.
             if (string.IsNullOrEmpty(t) || _hostSessions.Redeem(t) is not { } session)
             {
+                var blocked = _limiter.IsBlocked("host-login");
                 _limiter.RecordFailure("host-login");
-                return Results.Text(HostPage.Expired, "text/html; charset=utf-8", statusCode: 401);
+                return Results.Text(HostPage.Expired, "text/html; charset=utf-8", statusCode: blocked ? 429 : 401);
             }
             // Session only (gone when the browser closes), never readable by the page, never sent from another site.
             context.Response.Cookies.Append(HostCookie, session, new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Strict, Path = "/", IsEssential = true });

@@ -96,14 +96,28 @@ public sealed class HostScreenTests
     }
 
     [Fact]
-    public async Task A_wrong_secret_gets_the_same_answer_and_repeated_guesses_are_slowed()
+    public async Task Wrong_guesses_are_slowed_but_a_good_link_always_works_so_nobody_can_lock_the_admin_out()
     {
         await using var home = await StartAsync();
         using var browser = Browser(home);
+        var good = await LinkAsync(home);
 
-        for (var i = 0; i < 20; i++) Assert.Equal(HttpStatusCode.Unauthorized, (await browser.GetAsync("/host/login?t=guess" + i)).StatusCode);
+        for (var i = 0; i < 21; i++) await browser.GetAsync("/host/login?t=guess" + i);
 
-        Assert.Equal(HttpStatusCode.TooManyRequests, (await browser.GetAsync(await LinkAsync(home))).StatusCode); // even a real link waits
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await browser.GetAsync("/host/login?t=one-more")).StatusCode); // guessing is slowed
+        Assert.Equal(HttpStatusCode.Redirect, (await browser.GetAsync(good)).StatusCode); // the real link is not
+    }
+
+    [Fact]
+    public async Task The_session_opens_the_host_api_only_and_never_an_extension_page_that_shares_its_origin()
+    {
+        await using var home = await StartAsync(extensions: new Dictionary<string, string> { ["sleipnir"] = "echo" });
+        await home.WaitForExtensionsAsync();
+        using var browser = Browser(home);
+        var cookie = await SignInAsync(home, browser);
+
+        Assert.Equal(HttpStatusCode.OK, (await browser.SendAsync(With(cookie, HttpMethod.Get, "/api/v1/people"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await browser.SendAsync(With(cookie, HttpMethod.Get, "/x/sleipnir/"))).StatusCode);
     }
 
     [Fact]

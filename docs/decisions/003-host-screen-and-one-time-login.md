@@ -22,11 +22,13 @@ open at once. The secret is never a program argument (every account can read tho
 cookie that is `HttpOnly`, `SameSite=Strict`, path `/`, and has no expiry (the browser drops it when it
 closes). The server keeps only a SHA-256 of each secret, in memory, so a restart ends every link and
 session. A session ends after one idle hour or eight hours in all, or when the screen is closed.
-Wrong secrets are throttled like other wrong guesses (20 a minute, then even a good link waits).
+Wrong secrets are throttled like other wrong guesses (20 a minute, then more wrong ones get 429), but a good link always works, so no local program can lock the admin out by spamming guesses.
 
 **Where the cookie counts.** Only on a request that is loopback at both ends, not the plain-HTTP
 fallback, and whose `Host` is `localhost`, `127.0.0.1` or `[::1]`. Then the session is the admin's own
-"This computer" device on `/api/*` and `/x/*`. Anywhere else the cookie is ignored. A request that
+"This computer" device on `/api/*` only. It is **not** honoured on `/x/*`: extension pages share this origin, so a script
+in one of them must never get the admin's session (they stay behind device tokens until they are served from an origin of
+their own). Anywhere else the cookie is ignored. A request that
 changes something must also carry an `Origin` equal to the page's own address; a missing or foreign
 one is `403 cross_site`.
 

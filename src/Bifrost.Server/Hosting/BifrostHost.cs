@@ -312,8 +312,9 @@ public sealed partial class BifrostHost : IAsyncDisposable
         }
 
         // A browser on this machine with a live host session is the admin's own device (ADR 003). Anything else falls through to tokens.
-        if (IsHostBrowser(context) && HasHostSession(context)
-            && (context.Request.Path.StartsWithSegments("/api") || context.Request.Path.StartsWithSegments(ExtensionProxy.Prefix)))
+        // Only for the API the host screen calls. Extension pages (/x/) share this origin, so a script in one must never get the
+        // admin's session; they stay behind device tokens until they are served from an origin of their own.
+        if (IsHostBrowser(context) && HasHostSession(context) && context.Request.Path.StartsWithSegments("/api"))
         {
             if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method) && !SameOrigin(context))
             {
